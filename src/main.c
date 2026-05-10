@@ -329,7 +329,7 @@ static void psg_decode(emulator_t* emu) {
 static uint8_t keyboard_matrix_read(void* userdata) {
     emulator_t* emu = (emulator_t*)userdata;
     uint8_t col = emu->via.orb & 0x07;
-    uint8_t kbd = oric_keyboard_scan_porta(&emu->keyboard, col);
+    uint8_t kbd = emu->keyboard.matrix[col];
     /* Blend joystick IJK state with keyboard (both active low → AND) */
     uint8_t joy = oric_joystick_read(&emu->joystick);
     return kbd & joy;
@@ -371,9 +371,14 @@ static uint8_t portb_read_callback(void* userdata) {
 
     uint8_t col = emu->via.orb & 0x07;
     uint8_t reg14 = emu->psg.registers[14];
-    /* PB3 = 1 if any tested-row key is pressed in the selected column.
+
+    /* Check: any pressed key in column matches the inverted mask?
+     * ~key_matrix = pressed keys (1=pressed), ~reg14 = rows to test */
+    uint8_t pressed = (~emu->keyboard.matrix[col]) & (~reg14) & 0xFF;
+
+    /* PB3 = 1 if any key matches, 0 otherwise.
      * Other input bits default to 1 (no external input). */
-    return oric_keyboard_scan_pb3(&emu->keyboard, reg14, col) ? 0xFF : 0xF7;
+    return pressed ? 0xFF : 0xF7;
 }
 
 static void io_write_callback(uint16_t address, uint8_t value, void* userdata) {

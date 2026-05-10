@@ -458,17 +458,6 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Docs: CLAUDE.md improvements (dynamic test counts, ACIA I/O routing, condensed CLI)
 - [x] 22 new tests, 327 total
 
-### Sprint 34c: Keyboard matrix scan transposition fix (v1.16.2-alpha) - DONE
-- [x] Fix: keyboard_matrix_read / portb_read_callback transposition (was reading
-      matrix[col] instead of combining active rows); Asteroids Oric-1 and any
-      direct-VIA-scan game now detect arrow keys correctly
-- [x] New: oric_keyboard_scan_porta() / oric_keyboard_scan_pb3() public helpers
-      in io/keyboard for testability and reuse
-- [x] New: 8 scan tests (porta no_keys, left arrow, multi-row + pb3 left/wrong
-      col/row masked/all directions/R-SHIFT false-positive guard)
-- [x] New: docs/bugs/BUG_keyboard_matrix_transposed.md (full reproducer + patch)
-- [x] 8 new tests, 335 total
-
 ## Future Enhancements
 
 ### Advanced Features
@@ -499,13 +488,13 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [ ] <5% CPU overhead on modern hardware
 
 ### Quality
-- [x] 335 tests passing (make tests)
+- [x] 327 tests passing (make tests)
 - [x] Zero critical bugs in test suite
 - [x] API documentation complete
 - [x] Comprehensive user guide
 
 ---
 
-**Last Updated**: 2026-05-11
-**Current Version**: 1.16.2-alpha
+**Last Updated**: 2026-03-28
+**Current Version**: 1.16.1-alpha
 **Next Milestone**: 2.0.0 (Telestrat / stable release)

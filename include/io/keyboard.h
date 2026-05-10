@@ -59,32 +59,6 @@ void oric_keyboard_reset(oric_keyboard_t* kb);
 void oric_keyboard_set_layout(oric_keyboard_t* kb, oric_kb_layout_t layout);
 
 /**
- * @brief Scan helper: build PSG Port A byte for the selected column.
- *
- * `col` is the value driven by VIA ORB[0:2] (selected column).
- * Returns bits b7..b0 where bit r is cleared iff key at (row=r, col) is
- * pressed. matrix[] is stored row-indexed (bit `col` cleared on press); this
- * function transposes that view back into the bus shape the PSG presents.
- *
- * @param kb keyboard state
- * @param col selected column (0..7)
- * @return PSG Port A value (active low, no key = 0xFF)
- */
-uint8_t oric_keyboard_scan_porta(const oric_keyboard_t* kb, uint8_t col);
-
-/**
- * @brief Scan helper: compute VIA PB3 result for the selected column / row mask.
- *
- * Implements the hardware behaviour driving PB3 during a ROM keyboard scan:
- *   - reg14 (PSG R14) is a row mask, active low: bit r = 0 → row r is tested
- *   - col (VIA ORB[0:2]) selects the column
- *   - PB3 = 1 iff any tested row has its (row, col) bit pressed
- *
- * @return non-zero if a tested key is pressed in the selected column
- */
-uint8_t oric_keyboard_scan_pb3(const oric_keyboard_t* kb, uint8_t reg14, uint8_t col);
-
-/**
  * @brief Press a key by ASCII character (for automated input / --type-keys)
  *
  * Sets the appropriate matrix bits for the given character.

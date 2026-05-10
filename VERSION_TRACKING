@@ -1,12 +1,21 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.1-alpha
-Release Date: 2026-03-28
-Status: Alpha (HIRES bit 7 inversion fix + keyboard tests, 327 tests pass)
+Current Version: 1.16.2-alpha
+Release Date: 2026-05-11
+Status: Alpha (keyboard matrix scan transposition fix, 335 tests pass)
 
 Version History:
 ----------------
+- 1.16.2-alpha (2026-05-11): Keyboard matrix scan transposition fix (Sprint 34c)
+  * Fix: keyboard_matrix_read / portb_read_callback indexaient matrix[col] au
+    lieu de combiner les rows actives — détection cassée pour tout programme
+    scannant la VIA directement (Asteroids Oric-1, etc.)
+  * New: oric_keyboard_scan_porta() / oric_keyboard_scan_pb3() public helpers
+  * New: 8 tests de scan (test_scan_porta_*, test_scan_pb3_*)
+  * New: docs/bugs/BUG_keyboard_matrix_transposed.md (rapport complet)
+  * 8 new tests, 335 total tests
+
 - 1.16.1-alpha (2026-03-28): HIRES bit 7 fix + 21 keyboard tests (Sprint 34b)
 - 1.16.0-alpha (2026-03-24): Serial hardening + bas2tap + AY fix + frame limiter (Sprint 34)
   * Fix: 50 Hz PAL frame limiter (was running at monitor refresh rate)

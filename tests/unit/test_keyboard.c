@@ -385,6 +385,104 @@ TEST(test_press_char_unmapped) {
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
+/*  Scan helpers — PSG Port A + VIA PB3 (regression: matrix      */
+/*  transposition bug between scan and storage conventions)      */
+/* ═══════════════════════════════════════════════════════════════ */
+
+TEST(test_scan_porta_no_keys) {
+    oric_keyboard_t kb; oric_keyboard_init(&kb);
+    /* All cols return 0xFF when nothing is pressed */
+    for (uint8_t col = 0; col < 8; col++)
+        ASSERT_EQ(oric_keyboard_scan_porta(&kb, col), 0xFF);
+}
+
+TEST(test_scan_porta_left_arrow) {
+    /* LEFT = row 4, col 5 → scan(col=5) must clear bit 4 */
+    oric_keyboard_t kb; oric_keyboard_init(&kb);
+    SDL_Event ev = make_keydown(SDLK_LEFT, SDL_SCANCODE_LEFT);
+    ASSERT_TRUE(oric_keyboard_handle_sdl_event(&kb, &ev));
+    ASSERT_EQ(oric_keyboard_scan_porta(&kb, 5), (uint8_t)~(1u << 4));
+    /* Other cols unaffected */
+    ASSERT_EQ(oric_keyboard_scan_porta(&kb, 4), 0xFF);
+    ASSERT_EQ(oric_keyboard_scan_porta(&kb, 7), 0xFF);
+}
+
+TEST(test_scan_porta_multiple_rows_same_col) {
+    /* Manually press (row=2, col=3) and (row=6, col=3) */
+    oric_keyboard_t kb; oric_keyboard_init(&kb);
+    kb.matrix[2] &= (uint8_t)~(1u << 3);
+    kb.matrix[6] &= (uint8_t)~(1u << 3);
+    uint8_t expected = (uint8_t)~((1u << 2) | (1u << 6));
+    ASSERT_EQ(oric_keyboard_scan_porta(&kb, 3), expected);
+}
+
+TEST(test_scan_pb3_left_arrow_row4_active) {
+    /* Press LEFT (row 4, col 5). reg14 = 0xEF (row 4 active, others masked),
+     * col = 5 → PB3 must be set. */
+    oric_keyboard_t kb; oric_keyboard_init(&kb);
+    SDL_Event ev = make_keydown(SDLK_LEFT, SDL_SCANCODE_LEFT);
+    ASSERT_TRUE(oric_keyboard_handle_sdl_event(&kb, &ev));
+    ASSERT_TRUE(oric_keyboard_scan_pb3(&kb, 0xEF, 5));
+}
+
+TEST(test_scan_pb3_left_arrow_wrong_col) {
+    /* Press LEFT (row 4, col 5). reg14 = 0xEF, col = 7 (RIGHT) → PB3 = 0.
+     * This is the exact assertion that the old transposed code failed:
+     * before the fix, scanning col 7 with row 4 active falsely matched
+     * because matrix[col=7] was being read as if it carried row 4. */
+    oric_keyboard_t kb; oric_keyboard_init(&kb);
+    SDL_Event ev = make_keydown(SDLK_LEFT, SDL_SCANCODE_LEFT);
+    ASSERT_TRUE(oric_keyboard_handle_sdl_event(&kb, &ev));
+    ASSERT_FALSE(oric_keyboard_scan_pb3(&kb, 0xEF, 7));
+}
+
+TEST(test_scan_pb3_left_arrow_wrong_row_masked) {
+    /* Press LEFT (row 4, col 5). reg14 = 0xFF (no rows tested) → PB3 = 0. */
+    oric_keyboard_t kb; oric_keyboard_init(&kb);
+    SDL_Event ev = make_keydown(SDLK_LEFT, SDL_SCANCODE_LEFT);
+    ASSERT_TRUE(oric_keyboard_handle_sdl_event(&kb, &ev));
+    ASSERT_FALSE(oric_keyboard_scan_pb3(&kb, 0xFF, 5));
+}
+
+TEST(test_scan_pb3_all_arrow_keys) {
+    /* The five direction keys live on row 4: SPACE col 0, UP col 3,
+     * LEFT col 5, DOWN col 6, RIGHT col 7. With reg14 = 0xEF (row 4 only),
+     * each must trigger PB3 on its column and nowhere else. */
+    struct { SDL_Keycode key; SDL_Scancode sc; uint8_t col; } cases[] = {
+        { SDLK_SPACE, SDL_SCANCODE_SPACE, 0 },
+        { SDLK_UP,    SDL_SCANCODE_UP,    3 },
+        { SDLK_LEFT,  SDL_SCANCODE_LEFT,  5 },
+        { SDLK_DOWN,  SDL_SCANCODE_DOWN,  6 },
+        { SDLK_RIGHT, SDL_SCANCODE_RIGHT, 7 },
+    };
+    for (size_t i = 0; i < sizeof(cases)/sizeof(cases[0]); i++) {
+        oric_keyboard_t kb; oric_keyboard_init(&kb);
+        SDL_Event ev = make_keydown(cases[i].key, cases[i].sc);
+        ASSERT_TRUE(oric_keyboard_handle_sdl_event(&kb, &ev));
+        ASSERT_TRUE(oric_keyboard_scan_pb3(&kb, 0xEF, cases[i].col));
+        /* Negative: scanning a different column with same reg14 → no hit */
+        uint8_t other = (uint8_t)((cases[i].col + 1) & 0x07);
+        if (other == cases[i].col) other = (uint8_t)((other + 1) & 0x07);
+        ASSERT_FALSE(oric_keyboard_scan_pb3(&kb, 0xEF, other));
+    }
+}
+
+TEST(test_scan_pb3_rshift_not_on_arrow_col) {
+    /* R-SHIFT = row 7, col 4. With reg14 = 0xEF (row 4 only), scanning
+     * column 7 must NOT trigger PB3 — this was the false-positive
+     * pattern (R-SHIFT appearing as RIGHT) under the transposed code. */
+    oric_keyboard_t kb; oric_keyboard_init(&kb);
+    SDL_Event ev = make_keydown(SDLK_RSHIFT, SDL_SCANCODE_RSHIFT);
+    ASSERT_TRUE(oric_keyboard_handle_sdl_event(&kb, &ev));
+    /* With reg14 = 0xEF, row 7 is masked off (bit 7 of reg14 = 1) so even
+     * scanning col 4 returns 0. */
+    ASSERT_FALSE(oric_keyboard_scan_pb3(&kb, 0xEF, 4));
+    /* With reg14 = 0x7F (row 7 active), col 4 → PB3 = 1, col 7 → 0. */
+    ASSERT_TRUE(oric_keyboard_scan_pb3(&kb, 0x7F, 4));
+    ASSERT_FALSE(oric_keyboard_scan_pb3(&kb, 0x7F, 7));
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
 
 int main(void) {
     printf("Running ORIC keyboard mapping tests...\n");
@@ -420,6 +518,16 @@ int main(void) {
     RUN(test_qwerty_space);
     RUN(test_qwerty_return);
     RUN(test_multiple_arrows);
+
+    printf("\n  Scan helpers — PSG Port A + VIA PB3:\n");
+    RUN(test_scan_porta_no_keys);
+    RUN(test_scan_porta_left_arrow);
+    RUN(test_scan_porta_multiple_rows_same_col);
+    RUN(test_scan_pb3_left_arrow_row4_active);
+    RUN(test_scan_pb3_left_arrow_wrong_col);
+    RUN(test_scan_pb3_left_arrow_wrong_row_masked);
+    RUN(test_scan_pb3_all_arrow_keys);
+    RUN(test_scan_pb3_rshift_not_on_arrow_col);
 
     printf("\n═══════════════════════════════════════════════════════════\n");
     printf("Results: %d passed, %d failed\n", tests_passed, tests_failed);

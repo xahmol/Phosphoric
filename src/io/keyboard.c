@@ -44,6 +44,26 @@ void oric_keyboard_set_layout(oric_keyboard_t* kb, oric_kb_layout_t layout) {
     kb->layout = layout;
 }
 
+uint8_t oric_keyboard_scan_porta(const oric_keyboard_t* kb, uint8_t col) {
+    uint8_t col_mask = (uint8_t)(1u << (col & 0x07));
+    uint8_t porta = 0xFF;
+    for (int row = 0; row < 8; row++) {
+        if (!(kb->matrix[row] & col_mask))
+            porta &= (uint8_t)~(1u << row);
+    }
+    return porta;
+}
+
+uint8_t oric_keyboard_scan_pb3(const oric_keyboard_t* kb, uint8_t reg14, uint8_t col) {
+    uint8_t col_mask = (uint8_t)(1u << (col & 0x07));
+    for (int row = 0; row < 8; row++) {
+        if (reg14 & (1u << row)) continue;     /* row not tested */
+        if (!(kb->matrix[row] & col_mask))
+            return 1;
+    }
+    return 0;
+}
+
 /* ================================================================
  * Character -> ORIC matrix mapping (used by both SDL and press_char)
  * ================================================================

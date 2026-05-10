@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.2-alpha] - 2026-05-11
+
+### Keyboard matrix scan transposition fix (Sprint 34c)
+
+#### Fixed
+- **Scan matriciel clavier transposé** : `keyboard_matrix_read` et
+  `portb_read_callback` (src/main.c) indexaient `keyboard.matrix[]` par colonne
+  alors que `io/keyboard.c` la stocke indexée par ligne (bit = colonne). Les
+  jeux qui scannent la VIA directement (lecture de PB3 avec PSG R14 masque de
+  rows + VIA ORB[0:2] colonne) ne détectaient aucune touche, ou en détectaient
+  une à la mauvaise position (R-SHIFT lu comme RIGHT, etc.). Programme de test
+  reproducteur : Asteroids Oric-1 (CC65 + asm 6502, voir
+  docs/bugs/BUG_keyboard_matrix_transposed.md).
+
+#### Added
+- **`oric_keyboard_scan_porta(kb, col)`** et **`oric_keyboard_scan_pb3(kb,
+  reg14, col)`** dans `include/io/keyboard.h` : helpers de scan qui exposent
+  publiquement la transposition matrix[row]→bus pour PSG Port A et VIA PB3.
+  Permet de tester le chemin de scan sans dépendre des callbacks statiques
+  de main.c.
+- **8 tests scan clavier** (test_keyboard) : `test_scan_porta_*` (no_keys,
+  left_arrow, multiple_rows_same_col), `test_scan_pb3_*` (left_arrow row 4,
+  wrong col, row masked, all 5 direction keys, R-SHIFT non-false-positive).
+- **docs/bugs/BUG_keyboard_matrix_transposed.md** : rapport complet du bug,
+  patch proposé, environnement de reproduction.
+
+#### Changed
+- **src/main.c** : `keyboard_matrix_read` et `portb_read_callback` délèguent
+  désormais aux helpers `oric_keyboard_scan_*`. Logique de scan centralisée
+  dans `io/keyboard`.
+
 ## [1.16.1-alpha] - 2026-03-28
 
 ### HIRES bit 7 inversion fix + keyboard tests (Sprint 34b)

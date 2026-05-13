@@ -503,6 +503,14 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] TYRANN.SAV.tap (auto-run=$00) inchangé — pas d'exec forcé
 - [x] 327 tests pass
 
+### Sprint 34h: Makefile header-dependency tracking (v1.16.7-alpha) - DONE
+- [x] Fix: -MMD -MP ajouté à CFLAGS, gcc émet des .d listant les includes
+- [x] -include $(OBJECTS:.o=.d) fait lire les dépendances au prochain build
+- [x] Touch include/*.h déclenche maintenant le rebuild des .c qui l'incluent
+- [x] Évite les binaires stale (cause du faux négatif auto-exec MC v1.16.6)
+- [x] clean: supprime aussi les .d générés
+- [x] 327 tests pass
+
 ## Future Enhancements
 
 ### Advanced Features
@@ -541,5 +549,5 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 ---
 
 **Last Updated**: 2026-05-13
-**Current Version**: 1.16.6-alpha
+**Current Version**: 1.16.7-alpha
 **Next Milestone**: 2.0.0 (Telestrat / stable release)

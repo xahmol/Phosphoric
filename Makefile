@@ -2,7 +2,9 @@
 # Complete build system for emulator, tools, and tests
 
 CC = gcc
-CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -I./include
+# -MMD -MP : generate per-object .d files capturing header dependencies so
+# touching include/*.h triggers recompilation of the .c files that use them.
+CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -I./include -MMD -MP
 LDFLAGS = -lm -lutil
 
 # Debug/Release
@@ -113,6 +115,11 @@ tap2sedoric: tools/tap2sedoric.c $(TOOL_OBJECTS) src/storage/sedoric.o
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
+
+# Include auto-generated header-dependency files (-MMD output).
+# Silent if absent (first build / after clean).
+-include $(OBJECTS:.o=.d)
+-include $(TOOL_OBJECTS:.o=.d)
 
 # ═══════════════════════════════════════════════════════════════
 #  TESTS
@@ -385,10 +392,10 @@ uninstall:
 	rm -rf $(DESTDIR)$(DOCDIR)
 
 clean:
-	rm -f $(OBJECTS) $(TARGET) $(TOOLS)
+	rm -f $(OBJECTS) $(OBJECTS:.o=.d) $(TARGET) $(TOOLS)
 	rm -f test_cpu test_memory test_io test_storage test_system test_rom test_video test_audio test_debugger test_cast test_savestate test_atmos test_joystick test_printer test_mcp40 test_renderer test_trace test_profiler test_rominfo test_serial test_keyboard test_coverage
-	rm -f tools/*.o
-	find . -name '*.gcno' -o -name '*.gcda' -o -name '*.gcov' | xargs rm -f 2>/dev/null
+	rm -f tools/*.o tools/*.d
+	find . -name '*.gcno' -o -name '*.gcda' -o -name '*.gcov' -o -name '*.d' | xargs rm -f 2>/dev/null
 
 help:
 	@echo "Phosphoric — ORIC-1 Emulator Makefile"

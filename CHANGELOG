@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.7-alpha] - 2026-05-13
+
+### Makefile header-dependency auto-tracking (Sprint 34h)
+
+#### Fixed
+- **Makefile ne suivait pas les dépendances `.h → .c`** : modifier un header
+  (`include/emulator.h`, etc.) ne déclenchait pas la recompilation des `.c`
+  qui l'incluent. Symptôme rencontré : après le bump `EMU_VERSION` à
+  `1.16.6-alpha`, `make SDL2=1` ne rebuilait pas `src/main.c` → binaire
+  servi gardait le code 1.16.5 sans l'auto-exec machine code.
+- Ajouté `-MMD -MP` aux `CFLAGS` : gcc émet un `.d` par objet listant
+  toutes les inclusions transitives. `-include $(OBJECTS:.o=.d)` (ajouté
+  après la règle `%.o`) fait que `make` lit ces dépendances au prochain
+  build. Le target `clean` nettoie aussi les `.d`.
+
+#### Tests
+- 327 tests pass.
+
 ## [1.16.6-alpha] - 2026-05-13
 
 ### Fast-load auto-exec for machine code (Sprint 34g)

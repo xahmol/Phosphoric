@@ -931,6 +931,22 @@ static void emulator_run(emulator_t* emu) {
             emu->fastload_pending = false;
         }
 
+        /* Auto-CLOAD: when a tape was provided without -f, the BASIC prompt
+         * is now ready (RAM test done) — auto-type CLOAD"" so the ROM CLOAD
+         * routine runs and triggers the on-tape auto-run flag normally.
+         * Only fires once; user can override by setting --type-keys. */
+        if (emu->tape_auto_cload_pending && total_executed > 3000000 &&
+            !emu->type_keys_text) {
+            emu->type_keys_text = "CLOAD\"\"\\n";
+            emu->type_keys_at = (int64_t)total_executed + CYCLES_PER_FRAME * 10;
+            emu->type_keys_idx = 0;
+            emu->type_keys_next_cycle = emu->type_keys_at;
+            emu->type_keys_done = false;
+            emu->type_keys_last_char = 0;
+            emu->tape_auto_cload_pending = false;
+            log_info("Auto-typing CLOAD\"\" for inserted tape");
+        }
+
         /* Auto-type: inject keystrokes at specified cycle count.
          * Each key is pressed for ~2 frames (40ms) then released for ~2 frames.
          * This simulates realistic typing speed for the ROM keyboard scanner. */
@@ -1682,6 +1698,7 @@ int main(int argc, char* argv[]) {
                         emu.tapeoffs = 0;
                         emu.tape_loaded = true;
                         emu.tape_syncstack = -1;
+                        emu.tape_auto_cload_pending = true;
                         log_info("Tape buffered for CLOAD: %d bytes", emu.tapelen);
                     } else {
                         log_warning("Tape read incomplete: %zu/%d bytes", rd, emu.tapelen);

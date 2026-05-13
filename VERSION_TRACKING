@@ -1,12 +1,21 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.7-alpha
+Current Version: 1.16.8-alpha
 Release Date: 2026-05-13
-Status: Alpha (Makefile auto-dep .h → .c tracking, 327 tests pass)
+Status: Alpha (Auto-CLOAD pour -t sans -f, 327 tests pass)
 
 Version History:
 ----------------
+- 1.16.8-alpha (2026-05-13): Auto-CLOAD pour -t sans -f (Sprint 34i)
+  * Feat: phosphoric -t game.tap (sans -f) auto-type CLOAD"" après BASIC ready
+  * Avant : tape buffered, utilisateur devait taper CLOAD"" manuellement
+  * Maintenant : CLOAD"" envoyé via type_keys à ~3M cycles, ROM CLOAD active
+    automatiquement, auto-run flag du header (.C7/.80) traité normalement
+  * Nouveau champ tape_auto_cload_pending dans emulator_t
+  * Comportement -f (fast-load) inchangé
+  * 327 tests pass
+
 - 1.16.7-alpha (2026-05-13): Makefile header-dependency tracking (Sprint 34h)
   * Build: CFLAGS += -MMD -MP, -include OBJECTS:.o=.d après règle %.o
   * Modifier include/*.h déclenche désormais le rebuild des .c qui l'incluent

@@ -511,6 +511,14 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] clean: supprime aussi les .d générés
 - [x] 327 tests pass
 
+### Sprint 34i: Auto-CLOAD pour -t sans -f (v1.16.8-alpha) - DONE
+- [x] Feat: phosphoric -t game.tap auto-injecte CLOAD"" après BASIC ready
+- [x] Mécanisme via type_keys existant, déclenché ~3M cycles après boot
+- [x] Routine CLOAD ROM lit la cassette + auto-run flag traité normalement
+- [x] tape_auto_cload_pending dans emulator_t activé hors fast_load
+- [x] Comportement -f inchangé
+- [x] 327 tests pass
+
 ## Future Enhancements
 
 ### Advanced Features
@@ -549,5 +557,5 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 ---
 
 **Last Updated**: 2026-05-13
-**Current Version**: 1.16.7-alpha
+**Current Version**: 1.16.8-alpha
 **Next Milestone**: 2.0.0 (Telestrat / stable release)

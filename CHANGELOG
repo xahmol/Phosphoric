@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.8-alpha] - 2026-05-13
+
+### Auto-CLOAD pour `-t` sans `-f` (Sprint 34i)
+
+#### Added
+- **Auto-`CLOAD ""` après init BASIC quand `-t` est passé sans `-f`.**
+  Avant, lancer `phosphoric -t game.tap` (sans fast-load) bufferisait la
+  cassette puis affichait le prompt BASIC en attente — l'utilisateur devait
+  taper `CLOAD ""` manuellement pour démarrer le chargement audio simulé.
+  Phosphoric injecte désormais `CLOAD""\n` au clavier dès que le BASIC est
+  prêt (~3 M cycles). La routine CLOAD ROM se déclenche normalement et
+  traite l'auto-run flag du header comme sur un Oric réel.
+- Nouveau champ `tape_auto_cload_pending` dans `emulator_t`, activé en
+  même temps que `tape_loaded` dans la branche non-fast-load.
+- Comportement `-f` inchangé (fast-load court-circuite ce mécanisme).
+
+#### Tests
+- 327 tests pass.
+
 ## [1.16.7-alpha] - 2026-05-13
 
 ### Makefile header-dependency auto-tracking (Sprint 34h)

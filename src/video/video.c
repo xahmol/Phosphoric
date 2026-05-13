@@ -153,89 +153,99 @@ static void render_attr_block(video_t* vid, int x, int y,
  *  Main render entry point
  * ═══════════════════════════════════════════════════════════════════════ */
 
-void video_render_frame(video_t* vid, const uint8_t* memory) {
+/**
+ * Render one scanline (y in [0, 223]) by sampling the current memory state.
+ *
+ * Lines 0-199: HIRES or TEXT depending on vid_mode (persistent across
+ * scanlines, per real Oric ULA). Mid-line attribute bytes can flip the
+ * read source between $A000+ (HIRES) and $BB80+ (TEXT), so the base
+ * address is recomputed each column from the current vid_mode.
+ *
+ * Lines 200-223: always TEXT from $BB80 (rows 25-27 of the 28-row text
+ * screen). These rows can also contain attribute bytes that change
+ * vid_mode for subsequent scanlines.
+ *
+ * This is the "hardware-accurate" rendering path: called once per PAL
+ * scanline boundary (every PAL_CYCLES_PER_LINE = 64 CPU cycles) from
+ * the emulator main loop, so each scanline sees the memory state at
+ * that exact CPU cycle. Mimics Oricutron's `ula_doraster`.
+ */
+void video_render_scanline(video_t* vid, const uint8_t* memory, int y) {
     if (!memory) return;
+    if (y < 0 || y >= 224) return;
 
-    /* Render lines 0-199: HIRES or TEXT depending on vid_mode */
-    for (int y = 0; y < 200; y++) {
+    if (y < 200) {
         uint8_t ink = ORIC_WHITE, paper = ORIC_BLACK;
-        bool hires = (vid->vid_mode & 0x04) != 0;
+        int row = y / 8;
+        int chline = y & 7;
 
-        if (hires) {
-            for (int col = 0; col < 40; col++) {
-                uint8_t byte = memory[0xA000 + y * 40 + col];
-                if ((byte & 0x60) == 0) {
-                    decode_attr(vid, byte, &ink, &paper, NULL);
-                    hires = (vid->vid_mode & 0x04) != 0;
-                    render_attr_block(vid, col * 6, y, paper, 1);
-                } else {
-                    render_hires_block(vid, col * 6, y, byte, ink, paper);
-                }
-            }
-        } else {
-            int row = y / 8;
-            int chline = y & 7;
-            for (int col = 0; col < 40; col++) {
-                uint8_t byte = memory[0xBB80 + row * 40 + col];
-                if ((byte & 0x60) == 0) {
-                    bool inverse = false;
-                    decode_attr(vid, byte, &ink, &paper, &inverse);
-                    if (vid->vid_mode & 0x04) {
-                        hires = true;
-                        render_attr_block(vid, col * 6, y, paper, 1);
-                        for (col++; col < 40; col++) {
-                            byte = memory[0xA000 + y * 40 + col];
-                            if ((byte & 0x60) == 0) {
-                                decode_attr(vid, byte, &ink, &paper, NULL);
-                                render_attr_block(vid, col * 6, y, paper, 1);
-                            } else {
-                                render_hires_block(vid, col * 6, y, byte, ink, paper);
-                            }
-                        }
-                        break;
-                    }
-                    uint8_t pr, pg, pb;
-                    video_get_rgb(paper, &pr, &pg, &pb);
-                    for (int bx = 0; bx < 6; bx++)
-                        set_pixel(vid, col * 6 + bx, y, pr, pg, pb);
-                } else {
-                    bool inverse = false;
-                    uint8_t fg = inverse ? paper : ink;
-                    uint8_t bg = inverse ? ink : paper;
-                    uint8_t ir, ig, ib, pr, pg, pb;
-                    video_get_rgb(fg, &ir, &ig, &ib);
-                    video_get_rgb(bg, &pr, &pg, &pb);
-                    uint8_t bits = get_charset_byte(vid, memory, byte & 0x7F, chline);
-                    bool char_inv = (byte & 0x80) != 0;
-                    for (int bx = 5; bx >= 0; bx--) {
-                        bool on = (bits & (1 << bx)) != 0;
-                        if (char_inv) on = !on;
-                        if (on) set_pixel(vid, col * 6 + (5 - bx), y, ir, ig, ib);
-                        else    set_pixel(vid, col * 6 + (5 - bx), y, pr, pg, pb);
-                    }
+        for (int col = 0; col < 40; col++) {
+            bool hires = (vid->vid_mode & 0x04) != 0;
+            uint16_t base = hires ? (0xA000 + y * 40) : (0xBB80 + row * 40);
+            uint8_t byte = memory[base + col];
+
+            if ((byte & 0x60) == 0) {
+                bool inverse = false;
+                decode_attr(vid, byte, &ink, &paper, &inverse);
+                render_attr_block(vid, col * 6, y, paper, 1);
+            } else if (hires) {
+                render_hires_block(vid, col * 6, y, byte, ink, paper);
+            } else {
+                bool inverse = false;
+                uint8_t fg = inverse ? paper : ink;
+                uint8_t bg = inverse ? ink : paper;
+                uint8_t ir, ig, ib, pr, pg, pb;
+                video_get_rgb(fg, &ir, &ig, &ib);
+                video_get_rgb(bg, &pr, &pg, &pb);
+                uint8_t bits = get_charset_byte(vid, memory, byte & 0x7F, chline);
+                bool char_inv = (byte & 0x80) != 0;
+                for (int bx = 5; bx >= 0; bx--) {
+                    bool on = (bits & (1 << bx)) != 0;
+                    if (char_inv) on = !on;
+                    if (on) set_pixel(vid, col * 6 + (5 - bx), y, ir, ig, ib);
+                    else    set_pixel(vid, col * 6 + (5 - bx), y, pr, pg, pb);
                 }
             }
         }
-    }
 
-    vid->hires_mode = (vid->vid_mode & 0x04) != 0;
-
-    /* Lines 200-223: always TEXT from $BB80 (rows 25-27) */
-    for (int row = 25; row < 28; row++) {
+        if (y == 199) vid->hires_mode = (vid->vid_mode & 0x04) != 0;
+    } else {
+        /* Lines 200-223: always TEXT from $BB80 (rows 25-27) */
+        int row = 25 + (y - 200) / 8;
+        int chline = (y - 200) & 7;
         uint8_t ink = ORIC_WHITE, paper = ORIC_BLACK;
-        bool inverse = false;
         for (int col = 0; col < 40; col++) {
             uint8_t byte = memory[0xBB80 + row * 40 + col];
-            int sy = 200 + (row - 25) * 8;
             if ((byte & 0x60) == 0) {
+                bool inverse = false;
                 decode_attr(vid, byte, &ink, &paper, &inverse);
-                render_attr_block(vid, col * 6, sy, paper, 8);
+                render_attr_block(vid, col * 6, y, paper, 1);
             } else {
-                render_text_char(vid, memory, col * 6, sy,
-                                 byte, ink, paper, inverse);
+                bool inverse = false;
+                uint8_t fg = inverse ? paper : ink;
+                uint8_t bg = inverse ? ink : paper;
+                uint8_t ir, ig, ib, pr, pg, pb;
+                video_get_rgb(fg, &ir, &ig, &ib);
+                video_get_rgb(bg, &pr, &pg, &pb);
+                uint8_t bits = get_charset_byte(vid, memory, byte & 0x7F, chline);
+                bool char_inv = (byte & 0x80) != 0;
+                for (int bx = 5; bx >= 0; bx--) {
+                    bool on = (bits & (1 << bx)) != 0;
+                    if (char_inv) on = !on;
+                    if (on) set_pixel(vid, col * 6 + (5 - bx), y, ir, ig, ib);
+                    else    set_pixel(vid, col * 6 + (5 - bx), y, pr, pg, pb);
+                }
             }
         }
-    }
 
-    vid->need_refresh = false;
+        if (y == 223) vid->need_refresh = false;
+    }
+}
+
+void video_render_frame(video_t* vid, const uint8_t* memory) {
+    if (!memory) return;
+    /* Fallback path: render the whole frame in one pass against the current
+     * memory snapshot. Used when the main loop hasn't ticked per-scanline
+     * (e.g. headless --screenshot at exit) or as a last resort. */
+    for (int y = 0; y < 224; y++) video_render_scanline(vid, memory, y);
 }

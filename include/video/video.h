@@ -45,6 +45,7 @@ void video_cleanup(video_t* vid);
 void video_reset(video_t* vid);
 void video_set_mode(video_t* vid, bool hires);
 void video_render_frame(video_t* vid, const uint8_t* memory);
+void video_render_scanline(video_t* vid, const uint8_t* memory, int y);
 void video_get_rgb(uint8_t oric_color, uint8_t* r, uint8_t* g, uint8_t* b);
 
 #endif

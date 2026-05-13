@@ -1,12 +1,20 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.12-alpha
+Current Version: 1.16.13-alpha
 Release Date: 2026-05-13
-Status: Alpha (Fix Mutter « ne répond pas » via suppression PRESENTVSYNC, 327 tests pass)
+Status: Alpha (Rendu scanline-par-scanline ULA-accurate ; asteroids Atmos OK, 327 tests pass)
 
 Version History:
 ----------------
+- 1.16.13-alpha (2026-05-13): Rendu vidéo scanline-par-scanline ULA hardware-accurate (Sprint 34n)
+  * Avant : video_render_frame en fin de boucle CPU (sample mémoire figé)
+  * Maintenant : video_render_scanline interleavé tous les 64 cycles CPU
+  * Chaque scanline voit l'état mémoire au moment de son émission (comme ULA)
+  * Fix asteroids.tap + Atmos (écran noir → titre HIRES affiché)
+  * Mimétisme Oricutron `ula_doraster`
+  * 327 tests pass
+
 - 1.16.12-alpha (2026-05-13): Fix Mutter « ne répond pas » sur fenêtre statique (Sprint 34m)
   * Cause : SDL_RENDERER_PRESENTVSYNC pouvait bloquer SDL_RenderPresent
     indéfiniment sur compositeurs Wayland quand fenêtre occluse →

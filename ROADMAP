@@ -539,6 +539,19 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34n: Rendu scanline-par-scanline ULA hardware-accurate (v1.16.13-alpha) - DONE
+- [x] Diagnostic : asteroids.tap noir sur Atmos, OK Oric-1 (et OK sur Oricutron)
+- [x] Cause racine : rendu frame-end de Phosphoric vs scanline d'Oricutron
+- [x] Pendant hires_init asteroids, attributs résiduels charset Atmos
+      ($1A,$1C,$1E,$18) en zone HIRES → vid_mode oscille → finit TEXT
+- [x] Refactor video.c : video_render_scanline(vid, mem, y) standalone
+- [x] Refactor main.c inner loop : appel render_scanline tous les 64 cycles
+- [x] vid_mode persistant intra-scanline ; switch read-source mid-line si
+      attribut flip vid_mode (HIRES↔TEXT base)
+- [x] Validé : asteroids.tap Atmos affiche maintenant ASTEROIDS PRESS SPACE
+- [x] Pas de régression Oric-1 ; bottom text rows (200-223) toujours OK
+- [x] 327 tests pass
+
 ### Sprint 34m: Fix Mutter « ne répond pas » Wayland (v1.16.12-alpha) - DONE
 - [x] Diagnostic : Phosphoric appairait comme « ne répond pas » sur Wayland
       dès que la fenêtre restait statique (cas asteroids.tap loopant sur

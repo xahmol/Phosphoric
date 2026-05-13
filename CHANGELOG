@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.13-alpha] - 2026-05-13
+
+### Rendu vidéo scanline-par-scanline (ULA hardware-accurate) (Sprint 34n)
+
+#### Changed
+- **`video_render_frame` remplacé par `video_render_scanline` interleavé
+  avec le CPU**. Avant 1.16.13, Phosphoric rendait toute la frame en un
+  coup à la fin de la boucle CPU (sample mémoire figé). Désormais, une
+  scanline est rendue tous les `PAL_CYCLES_PER_LINE` (64) cycles CPU
+  dans la boucle inner — chaque scanline voit l'état mémoire au moment
+  exact de son émission, comme l'ULA réelle.
+- Refactor `src/video/video.c` :
+  - Nouvelle fonction `video_render_scanline(vid, mem, y)` pour `y ∈ [0,223]`
+  - `video_render_frame` conservée comme fallback (boucle scanlines, utilisée
+    par le screenshot d'exit et la compatibilité)
+  - Switch read-source mid-scanline : un attribut qui flip vid_mode bascule
+    aussi l'adresse de lecture entre `$A000+` (HIRES) et `$BB80+` (TEXT),
+    mimant Oricutron `ula_doraster`
+- `src/main.c` : inner loop CPU appelle `video_render_scanline` quand
+  `frame_cycles / 64` franchit un seuil. 224 scanlines visibles (200 HIRES/TEXT
+  + 24 bottom text). Flush des scanlines restantes si CPU halted mid-frame.
+
+#### Fixed
+- **asteroids.tap sur ORIC Atmos affichait un écran noir**. Cause : pendant
+  le `hires_init()` (write `$1C` à `$BB80` puis fill `$A000-$BF3F = $40`),
+  les ~80 K cycles de fill laissaient des attributs résiduels du charset
+  Atmos (`$1A`, `$1C`, `$1E`, `$18`) en zone HIRES. Le render frame-end
+  voyait ces attributs et faisait osciller `vid_mode` jusqu'à finir en TEXT
+  par malchance. Avec le rendu scanline, à mesure que la fill avance entre
+  les scanlines, les bytes lus sont déjà nettoyés → `vid_mode` reste à
+  HIRES. Comportement identique à Oricutron.
+- Sur Oric-1 le bug existait aussi mais le charset BASIC 1.0 contient moins
+  de bytes ressemblant à des attributs, donc le frame-end tombait par
+  chance en HIRES.
+
+#### Verified
+- `make tests` : 24/24 suites passent (renderer headless pré-existant
+  inchangé, indépendant).
+- `asteroids.tap` sur Atmos (`basic11b.rom` d'Oricutron) : titre HIRES
+  affiché, identique à Oricutron.
+- `asteroids.tap` sur Oric-1 (`basic10.rom`) : titre toujours affiché
+  (pas de régression).
+
+#### Why (longue version)
+- Oricutron rend scanline-par-scanline via `ula_doraster()` appelée tous
+  les 64 cycles CPU. Phosphoric le faisait frame-end (sample figé), créant
+  une divergence comportementale sur les programmes qui modifient l'écran
+  mid-frame (HIRES init, attributs résiduels, etc.). Cf. analyse complète
+  dans la session de debug 2026-05-13.
+
 ## [1.16.12-alpha] - 2026-05-13
 
 ### Fix — Mutter « ne répond pas » sur fenêtre statique (Sprint 34m)

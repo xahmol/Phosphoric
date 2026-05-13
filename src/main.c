@@ -791,6 +791,7 @@ static void emulator_run(emulator_t* emu) {
 #endif
         /* Execute one frame worth of CPU cycles */
         int frame_cycles = 0;
+        int rendered_scanlines = 0;
         bool vsync_triggered = false;
         while (frame_cycles < CYCLES_PER_FRAME && !emu->cpu.halted) {
             /* Legacy single breakpoint (--breakpoint / -b) */
@@ -856,6 +857,26 @@ static void emulator_run(emulator_t* emu) {
              * signal is toggled here on purpose — Phosphoric stays faithful
              * to the hardware. */
             (void)vsync_triggered;
+
+            /* Scanline-accurate ULA rendering: emit one scanline every
+             * PAL_CYCLES_PER_LINE (64) CPU cycles. The visible area is
+             * 224 lines (200 HIRES/TEXT + 24 bottom text rows). Lines
+             * 224-311 are vertical blanking (not rendered). Mimics real
+             * Oric ULA behavior where the electron beam paints in real
+             * time as the CPU runs, so each scanline samples the memory
+             * state at its precise emission cycle (e.g. mid-fill state
+             * during HIRES init). */
+            int target_scanline = frame_cycles / PAL_CYCLES_PER_LINE;
+            while (rendered_scanlines < target_scanline && rendered_scanlines < 224) {
+                video_render_scanline(&emu->video, emu->memory.ram, rendered_scanlines);
+                rendered_scanlines++;
+            }
+        }
+
+        /* Flush any remaining scanlines (e.g. if CPU halted mid-frame) */
+        while (rendered_scanlines < 224) {
+            video_render_scanline(&emu->video, emu->memory.ram, rendered_scanlines);
+            rendered_scanlines++;
         }
 
         total_executed += (uint64_t)frame_cycles;
@@ -993,8 +1014,10 @@ static void emulator_run(emulator_t* emu) {
             acia_trace_flush(&emu->acia);
         }
 
-        /* Render video frame */
-        video_render_frame(&emu->video, emu->memory.ram);
+        /* Video frame already rendered scanline-by-scanline above
+         * (interleaved with CPU cycles, ULA-accurate timing). No final
+         * pass needed; the framebuffer reflects the per-scanline memory
+         * snapshots. */
 
         /* Push frame to cast server if active */
         if (emu->has_cast_server) {

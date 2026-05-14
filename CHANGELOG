@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.16-alpha] - 2026-05-14
+
+### CI : cppcheck + flawfinder + 3 bugs buffer overflow corrigés (Sprint 34q)
+
+#### Added
+- **`make cppcheck`** : analyse statique C11 via cppcheck
+  (`--enable=warning,performance,portability`, exclusion `third_party/`).
+  Exit 1 si warning ou erreur détectée.
+- **`make flawfinder`** : scan de vulnérabilités CWE (niveaux 2+).
+  Exit 1 uniquement sur critique niveau 5 (vprintf logging = faux positif
+  niveau 4 documenté et contrôlé).
+- **`make security-check`** : pipeline cppcheck + flawfinder en séquence.
+- Entrées dans `make help` pour les trois nouvelles targets.
+
+#### Fixed
+- **`main.c` off-by-one dans rechainement BASIC** (`cassette_rechain_basic`) :
+  `while (ptr < 0xC000)` → `while (ptr + 1 < 0xC000)`.
+  `mem->ram[ptr+1]` accédait `ram[0xC000]` (hors bornes, RAM_SIZE=49152)
+  quand `ptr = 0xBFFF`.
+- **`main.c` double buffer overflow dans `--dump-ram-at` et dump auto** :
+  `fwrite(ram, 1, 0x10000, f)` sur `ram[RAM_SIZE=49152]` → lecture de
+  16384 octets hors du tableau. Corrigé en `fwrite(ram, 1, sizeof(ram), f)`.
+  Messages de log mis à jour : "48KB RAM $0000-$BFFF" (pas "64KB").
+
+#### Verified
+- `make tests` : 330 tests, 0 échec.
+- `make cppcheck` : 0 warning/error après corrections.
+- `make flawfinder` : 0 risque niveau 5 critique.
+
 ## [1.16.15-alpha] - 2026-05-14
 
 ### Fix hardware-accurate VIA Port A — phantom '7' éliminé (Sprint 34p)

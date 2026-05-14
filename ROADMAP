@@ -539,6 +539,14 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34q: CI sécurité cppcheck + flawfinder + 3 bugs corrigés (v1.16.16-alpha) - DONE
+- [x] Ajout make cppcheck (warning,performance,portability ; exclusion third_party/)
+- [x] Ajout make flawfinder (minlevel=2, error-level=5)
+- [x] Ajout make security-check (pipeline cppcheck + flawfinder)
+- [x] Fix off-by-one rechainement BASIC : ram[ptr+1] hors bornes quand ptr=0xBFFF
+- [x] Fix double buffer overflow --dump-ram-at : fwrite(ram,0x10000) → sizeof(ram)
+- [x] 330 tests pass
+
 ### Sprint 34p: Fix hardware-accurate VIA Port A — phantom '7' (v1.16.15-alpha) - DONE
 - [x] Investigation : comparaison Oricutron vs Phosphoric (modèle push vs pull PSG→VIA)
 - [x] Cause racine : psg_porta_read() appelé sur toute lecture Port A, selected_reg ≠ 14
@@ -639,5 +647,5 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 ---
 
 **Last Updated**: 2026-05-14
-**Current Version**: 1.16.15-alpha
+**Current Version**: 1.16.16-alpha
 **Next Milestone**: 2.0.0 (Telestrat / stable release)

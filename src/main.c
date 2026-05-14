@@ -338,14 +338,6 @@ static uint8_t keyboard_matrix_read(void* userdata) {
 }
 
 /**
- * @brief VIA Port A read callback - returns PSG data bus value
- */
-static uint8_t psg_porta_read(void* userdata) {
-    emulator_t* emu = (emulator_t*)userdata;
-    return ay_read_data(&emu->psg);
-}
-
-/**
  * @brief VIA Port B read callback - keyboard scan result on PB3
  *
  * On the ORIC, the keyboard scan works as follows (from Oricutron):
@@ -499,8 +491,8 @@ static bool emulator_init(emulator_t* emu) {
     memory_set_io_callbacks(&emu->memory, io_read_callback, io_write_callback, emu);
     via_set_irq_callback(&emu->via, irq_callback, emu);
 
-    /* Connect VIA Port A read to PSG data read (for keyboard scan) */
-    emu->via.porta_read = psg_porta_read;
+    /* VIA Port A is driven by PSG in READ mode: psg_decode() updates via.ira
+     * (IRA init = 0xFF, no phantom keys). No porta_read callback needed. */
     emu->via.portb_read = portb_read_callback;
     emu->via.userdata = emu;
 
@@ -988,11 +980,23 @@ static void emulator_run(emulator_t* emu) {
                     oric_keyboard_release_all(&emu->keyboard);
                     emu->type_keys_done = true;
                 } else if (c == '\\' && emu->type_keys_text[idx+1] == 'n') {
-                    /* \n = RETURN */
-                    oric_keyboard_release_all(&emu->keyboard);
-                    oric_keyboard_press_char(&emu->keyboard, '\n');
-                    emu->type_keys_idx += 2;
-                    emu->type_keys_next_cycle = (int64_t)total_executed + CYCLES_PER_FRAME * 4;
+                    /* \n = RETURN. Si deux \n consécutifs, insert un frame de
+                     * relâche entre les deux : le scanner ROM voit sinon une
+                     * pression longue unique au lieu de deux RETURN distincts.
+                     * On réutilise last_char sans toucher à type_keys_debounce
+                     * (qui est réservé au branch caractère ordinaire). */
+                    if (emu->type_keys_last_char == '\n') {
+                        oric_keyboard_release_all(&emu->keyboard);
+                        emu->type_keys_last_char = 0;
+                        /* idx non avancé : on re-traitera ce \n au prochain frame */
+                        emu->type_keys_next_cycle = (int64_t)total_executed + CYCLES_PER_FRAME;
+                    } else {
+                        oric_keyboard_release_all(&emu->keyboard);
+                        oric_keyboard_press_char(&emu->keyboard, '\n');
+                        emu->type_keys_last_char = '\n';
+                        emu->type_keys_idx += 2;
+                        emu->type_keys_next_cycle = (int64_t)total_executed + CYCLES_PER_FRAME * 4;
+                    }
                 } else if (c == '\\' && emu->type_keys_text[idx+1] == 'p') {
                     /* \pN = pause N seconds (N = single digit) */
                     int secs = emu->type_keys_text[idx+2] - '0';

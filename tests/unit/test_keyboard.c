@@ -389,6 +389,65 @@ TEST(test_press_char_unmapped) {
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
+/*  TEST 21: Double RETURN nécessite un gap (release_all) entre   */
+/*  les deux — c'est la responsabilité de l'appelant (type_keys). */
+/* ═══════════════════════════════════════════════════════════════ */
+
+TEST(test_press_char_double_return_needs_gap) {
+    oric_keyboard_t kb;
+    oric_keyboard_init(&kb);
+
+    /* Premier RETURN */
+    ASSERT_TRUE(oric_keyboard_press_char(&kb, '\n'));
+    ASSERT_TRUE(KEY_IS_PRESSED(kb, 7, 5));
+
+    /* Gap obligatoire : release_all entre deux RETURN consécutifs */
+    oric_keyboard_release_all(&kb);
+    ASSERT_TRUE(KEY_IS_RELEASED(kb, 7, 5));
+
+    /* Second RETURN visible après le gap */
+    ASSERT_TRUE(oric_keyboard_press_char(&kb, '\n'));
+    ASSERT_TRUE(KEY_IS_PRESSED(kb, 7, 5));
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/*  TEST 22: Majuscules et minuscules → même position matrice.    */
+/*  Le SHIFT LOCK ORIC (actif par défaut ROM) détermine la casse, */
+/*  pas un bit Shift dans la matrice pour les lettres.            */
+/* ═══════════════════════════════════════════════════════════════ */
+
+TEST(test_press_char_upper_lower_same_position) {
+    oric_keyboard_t kb;
+    oric_keyboard_init(&kb);
+
+    oric_keyboard_press_char(&kb, 'A');
+    /* 'A' → Col 6 Row 5, sans activer LSHIFT (SHIFT LOCK gère la casse) */
+    ASSERT_TRUE(KEY_IS_PRESSED(kb, 6, 5));
+    ASSERT_TRUE(KEY_IS_RELEASED(kb, 4, 4));  /* LSHIFT non injecté */
+
+    oric_keyboard_release_all(&kb);
+
+    oric_keyboard_press_char(&kb, 'a');
+    /* 'a' → même position que 'A' */
+    ASSERT_TRUE(KEY_IS_PRESSED(kb, 6, 5));
+    ASSERT_TRUE(KEY_IS_RELEASED(kb, 4, 4));  /* LSHIFT non injecté */
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/*  TEST 23: Caractère shifté n'active que LSHIFT, pas RSHIFT.   */
+/* ═══════════════════════════════════════════════════════════════ */
+
+TEST(test_press_char_shifted_lshift_only) {
+    oric_keyboard_t kb;
+    oric_keyboard_init(&kb);
+
+    /* '!' = Shift + 1 */
+    ASSERT_TRUE(oric_keyboard_press_char(&kb, '!'));
+    ASSERT_TRUE(KEY_IS_PRESSED(kb, 4, 4));   /* LSHIFT col=4 row=4 */
+    ASSERT_TRUE(KEY_IS_RELEASED(kb, 7, 4));  /* RSHIFT col=7 row=4 non touché */
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
 
 int main(void) {
     printf("Running ORIC keyboard mapping tests...\n");
@@ -424,6 +483,11 @@ int main(void) {
     RUN(test_qwerty_space);
     RUN(test_qwerty_return);
     RUN(test_multiple_arrows);
+
+    printf("\n  press_char — comportement SHIFT LOCK et debounce:\n");
+    RUN(test_press_char_double_return_needs_gap);
+    RUN(test_press_char_upper_lower_same_position);
+    RUN(test_press_char_shifted_lshift_only);
 
     printf("\n═══════════════════════════════════════════════════════════\n");
     printf("Results: %d passed, %d failed\n", tests_passed, tests_failed);

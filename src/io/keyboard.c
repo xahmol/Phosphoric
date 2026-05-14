@@ -104,7 +104,11 @@ static const char_entry_t char_map[128] = {
     /* 0x3E '>' */ S(4,2),   /* Shift + . */
     /* 0x3F '?' */ S(7,3),   /* Shift + / */
     /* 0x40 '@' */ S(2,6),   /* Shift + 2 */
-    /* 0x41-0x5A: uppercase letters */
+    /* 0x41-0x5A: majuscules ASCII → même position matrice que minuscules (U, pas S).
+     * La ROM BASIC active le SHIFT LOCK au démarrage : sans Shift physique ORIC,
+     * ces touches produisent des majuscules à l'écran.
+     * Si le SHIFT LOCK est désactivé par le programme, l'injection donne des
+     * minuscules. press_char() ne contrôle pas l'état du SHIFT LOCK. */
     U(6,5),U(2,2),U(2,7),U(1,7),U(6,3),U(1,3),U(6,2),U(6,1),
     U(5,1),U(1,0),U(3,0),U(7,1),U(2,0),U(0,1),U(5,2),U(5,3),
     U(1,6),U(1,2),U(6,6),U(1,1),U(5,0),U(0,3),U(6,7),U(0,6),

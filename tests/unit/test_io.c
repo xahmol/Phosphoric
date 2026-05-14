@@ -251,10 +251,10 @@ static void test_portb_write_cb(uint8_t val, void* ud) { (void)ud; test_portb_va
 TEST(test_port_a_read) {
     via6522_t via;
     via_init(&via);
-    via_set_port_callbacks(&via, test_porta_read_cb, test_porta_write_cb,
-                           test_portb_read_cb, test_portb_write_cb, NULL);
     via.ddra = 0x00; /* All input */
-    test_porta_val = 0xAA;
+    /* External device drives IRA (e.g. PSG in READ mode via psg_decode).
+     * VIA_ORA returns (ORA & DDRA) | (IRA & ~DDRA) = IRA when DDRA=0. */
+    via.ira = 0xAA;
     uint8_t val = via_read(&via, VIA_ORA);
     ASSERT_EQ(val, 0xAA);
 }
@@ -285,10 +285,9 @@ TEST(test_port_b_mixed_ddr) {
 TEST(test_ora_no_handshake) {
     via6522_t via;
     via_init(&via);
-    via_set_port_callbacks(&via, test_porta_read_cb, test_porta_write_cb,
-                           test_portb_read_cb, test_portb_write_cb, NULL);
     via.ddra = 0x00;
-    test_porta_val = 0xCC;
+    /* IRA driven by external device (no CA1 handshake involved). */
+    via.ira = 0xCC;
     uint8_t val = via_read(&via, VIA_ORA_NH);
     ASSERT_EQ(val, 0xCC);
 }

@@ -68,8 +68,10 @@ uint8_t via_read(via6522_t* via, uint8_t reg) {
         return (via->orb & via->ddrb) | (input & ~via->ddrb);
     }
     case VIA_ORA: {
-        uint8_t input = 0xFF;
-        if (via->porta_read) input = via->porta_read(via->userdata);
+        /* PSG drives IRA only when in READ mode (psg_decode updates ira).
+         * Using ira instead of polling a callback matches hardware: PSG
+         * puts data on the bus only during its READ bus cycle, not on
+         * every Port A read. IRA is initialised to 0xFF (no keys pressed). */
         via->ifr &= ~VIA_INT_CA1;
         {
             uint8_t ca2_mode = via->pcr & 0x0E;
@@ -77,7 +79,7 @@ uint8_t via_read(via6522_t* via, uint8_t reg) {
                 via->ifr &= ~VIA_INT_CA2;
         }
         via_check_irq(via);
-        return (via->ora & via->ddra) | (input & ~via->ddra);
+        return (via->ora & via->ddra) | (via->ira & ~via->ddra);
     }
     case VIA_DDRB: return via->ddrb;
     case VIA_DDRA: return via->ddra;
@@ -105,11 +107,8 @@ uint8_t via_read(via6522_t* via, uint8_t reg) {
     case VIA_PCR: return via->pcr;
     case VIA_IFR: return via->ifr;
     case VIA_IER: return via->ier | VIA_INT_ANY;
-    case VIA_ORA_NH: {
-        uint8_t input = 0xFF;
-        if (via->porta_read) input = via->porta_read(via->userdata);
-        return (via->ora & via->ddra) | (input & ~via->ddra);
-    }
+    case VIA_ORA_NH:
+        return (via->ora & via->ddra) | (via->ira & ~via->ddra);
     }
     return 0xFF;
 }

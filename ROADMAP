@@ -539,6 +539,18 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34p: Fix hardware-accurate VIA Port A — phantom '7' (v1.16.15-alpha) - DONE
+- [x] Investigation : comparaison Oricutron vs Phosphoric (modèle push vs pull PSG→VIA)
+- [x] Cause racine : psg_porta_read() appelé sur toute lecture Port A, selected_reg ≠ 14
+      → ay_read_data() retourne registre erroné (0x00) → bit0=0 même avec DDRA=$00
+- [x] Fix : VIA_ORA / VIA_ORA_NH lisent via->ira (mis à jour par psg_decode en READ mode)
+- [x] Suppression psg_porta_read() — callback inutile et source du bug
+- [x] Fix type_keys \n\n : gap d'un frame entre deux RETURN consécutifs
+- [x] 3 nouveaux tests test_keyboard (SHIFT LOCK, double RETURN, LSHIFT seul)
+- [x] Mise à jour test_io.c : test_port_a_read / test_ora_no_handshake → via.ira
+- [x] Confirmé : phantom absent sur programme utilisateur
+- [x] 330 tests pass
+
 ### Sprint 34o: Outillage debug IRQ (--trace-irq, --dump-ram-at) (v1.16.14-alpha) - DONE
 - [x] Demande formulée par équipe asteroids (debug IRQ T1 user vector)
 - [x] --trace-irq FILE : log chaque IRQ entrée + RTI avec contexte complet
@@ -619,13 +631,13 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [ ] <5% CPU overhead on modern hardware
 
 ### Quality
-- [x] 327 tests passing (make tests)
+- [x] 330 tests passing (make tests)
 - [x] Zero critical bugs in test suite
 - [x] API documentation complete
 - [x] Comprehensive user guide
 
 ---
 
-**Last Updated**: 2026-05-13
-**Current Version**: 1.16.10-alpha
+**Last Updated**: 2026-05-14
+**Current Version**: 1.16.15-alpha
 **Next Milestone**: 2.0.0 (Telestrat / stable release)

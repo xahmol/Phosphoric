@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.15-alpha] - 2026-05-14
+
+### Fix hardware-accurate VIA Port A — phantom '7' éliminé (Sprint 34p)
+
+#### Fixed
+- **Phantom '7' en headless** : `psg_porta_read()` était appelé sur *toute*
+  lecture VIA Port A (ORA / ORA_NH), indépendamment du mode PSG (BC1/BDIR).
+  Si `selected_reg ≠ 14` ou `registers[7]` bit6=0 au moment de la lecture,
+  `ay_read_data()` retournait un registre PSG erroné (souvent 0x00 après
+  memset), produisant un bit 0 bloqué à 0 même avec DDRA=$00.
+- **Architecture corrigée** : `VIA_ORA` et `VIA_ORA_NH` lisent maintenant
+  `via->ira`, mis à jour par `psg_decode()` uniquement en mode READ PSG
+  (BDIR=0, BC1=1). Comportement identique à Oricutron (modèle "push"
+  PSG→VIA). `via->ira` initialisé à 0xFF → aucun phantom avant le premier
+  cycle READ PSG.
+- **`psg_porta_read()` supprimé** : callback VIA Port A devenu inutile et
+  source du bug ; la chaîne PSG→clavier passe entièrement par
+  `psg_decode` → `via.ira` → `VIA_ORA_NH`.
+- **`type_keys \n\n`** : deux RETURN consécutifs insèrent maintenant un frame
+  de relâche entre les deux ; le scanner ROM voyait sinon une pression longue
+  unique au lieu de deux RETURN distincts.
+
+#### Added
+- **3 nouveaux tests `test_keyboard`** :
+  - `test_press_char_double_return_needs_gap`
+  - `test_press_char_upper_lower_same_position`
+  - `test_press_char_shifted_lshift_only`
+- **Documentation `char_map` 0x41-0x5A** : hypothèse SHIFT LOCK ROM explicitée.
+
+#### Changed
+- `tests/unit/test_io.c` : `test_port_a_read` et `test_ora_no_handshake` mis
+  à jour — utilisent `via.ira` directement (comportement hardware-accurate).
+
+#### Verified
+- `make tests` : 330 tests, 0 échec.
+- Phantom '7' absent sur programme utilisateur (confirmé interactivement).
+
 ## [1.16.14-alpha] - 2026-05-13
 
 ### Outillage debug IRQ — `--trace-irq` et `--dump-ram-at` (Sprint 34o)

@@ -5,6 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.39-alpha] - 2026-06-07
+
+### LOCI : fix critique MIA spin window ABI — Sprint 34an (FINAL)
+
+#### Fixed
+- **Cause racine** identifiée par l'ingé principal après review du CR
+  2026-06-06 : Phosphoric écrivait `$03B4/B6/B8/B9` (A/X/SREG) mais
+  jamais les opcodes CLV/BVC/LDA/LDX/RTS aux `$03B0-3` et `$03B5/B7`.
+  Le 6502 `JSR $03B0` lisait des zéro-init (BRK BRK...) au lieu du
+  released stub auto-modifiant de la firmware Pi Pico. Le premier
+  fastcall du boot LOCI (`tap_tell` via `update_tap_counter` à
+  main.c:1159, avant `InitKeyboard`) ne retournait jamais → `main()`
+  bloqué → R7 jamais `$7F` → pas de spinner → clavier silencieux.
+- Le pre-seed R7 du Sprint 34am masquait le symptôme R7 mais laissait
+  le bug ABI intact. À conserver comme filet inoffensif.
+
+#### Patch (Option B factorisée)
+- `api_install_blocked_stub` / `api_install_released_stub` : helpers
+  qui écrivent les 4 octets à `$03B0-3` (matche `api.h:152-153`)
+- `api_set_ax` étendu pour écrire `LDX #` (`$A2`) à `$03B5` et `RTS`
+  (`$60`) à `$03B7`, matchant firmware `api_set_ax` byte-pour-byte
+- `api_return_ax/axsreg/errno` : se terminent par `api_install_released_stub`
+- Dispatch trigger `$03AF` (`loci_write`) :
+  - `0x00` zxstack : reset xstack + ax=0 + released stub
+  - `0xFF` exit : blocked stub permanent
+  - autre : blocked stub puis handler synchrone
+- Default ENOSYS branch passe par `api_return_errno` (libère via released)
+- `loci_init`/`loci_reset` : `seed_initial_stub()` pose un released
+  no-op stub initial (A=X=SREG=0) pour les probes pré-op
+
+#### Tests
+- **3 nouveaux tests DIFFÉRENTIELS 6502** qui exécutent un vrai
+  `cpu_step()` sur un programme `STA $03AF / JSR $03B0 / STA $0200 / BRK`
+  et vérifient le retour A/X/SREG + BUSY clear + PC sain post-RTS :
+  - `test_6502_initial_jsr_returns_zero` : pré-op, retourne 0/0
+  - `test_6502_jsr_spin_zxstack_op_00` : op `0x00` efface xstack + retour 0
+  - `test_6502_jsr_spin_returns_via_released_stub` : op RNG_LRAND,
+    31-bit positif, BUSY clear, PC à BRK sentinel
+- `test_init_zeroes_state` mis à jour pour le released no-op seedé
+- Makefile : `test-loci` link `cpu6502 + memory` pour exercer le vrai CPU
+
+#### Validation utilisateur (interactive)
+- ✅ Boot ROM LOCI atteint son `while(1)` (spinner visible)
+- ✅ Clavier réactif (matrix scan ↔ `_KeyMatrix` ↔ `_ReadKey` chain)
+- ✅ Navigation TUI complète (lettres + flèches + ESC + Return)
+- ✅ Toggle config (b/t/f/o)
+- ✅ MIA_BOOT déclenché correctement → ROM swap vers BASIC 1.0/1.1
+- ✅ Scénario end-to-end : LOCI ROM → menu TUI → ESC → fresh boot dans
+  l'Oric BASIC sélectionné (chargé depuis `--loci-flash DIR`)
+
+**Phosphoric est officiellement le premier émulateur grand public à
+supporter LOCI en bout-en-bout.**
+
+#### Note sur le contract MIA ABI
+La fenêtre `$03B0-$03B9` est du code 6502 auto-modifiant, pas un
+register file. Le firmware Pi Pico encode BUSY dans le bit 7 de
+l'opérande BVC à `$03B2` ($FE = -2 + busy, $00 = +0 + ready). Cette
+double sémantique a été déchiffrée en lisant
+`loci-firmware/src/mia/api/api.h:152-186` et reproduite octet-pour-octet
+côté Phosphoric.
+
 ## [1.16.38-alpha] - 2026-06-06
 
 ### LOCI : fix clavier — pre-seed PSG R7=$7F (Sprint 34am)

@@ -539,6 +539,23 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34an: LOCI fix critique MIA spin window ABI (v1.16.39-alpha) - DONE
+- [x] Cause racine identifiée par ingé principal après review CR
+- [x] api_install_blocked_stub + api_install_released_stub (Option B)
+- [x] api_set_ax étendu : LDX# à $03B5, RTS à $03B7
+- [x] api_return_ax/axsreg/errno : terminent par api_install_released_stub
+- [x] Dispatch $03AF complet : 0x00 zxstack / 0xFF exit / autre
+- [x] Default ENOSYS via api_return_errno (released auto)
+- [x] seed_initial_stub à init/reset (released no-op A=X=SREG=0)
+- [x] 3 tests DIFFÉRENTIELS 6502 (vrai cpu_step + memory I/O)
+- [x] Makefile test-loci link cpu6502+memory+addressing+banking
+- [x] test_init_zeroes_state mis à jour pour stub seedé
+- [x] 108 tests test-loci, 448 tests global pass
+- [x] LOCI ROM atteint while(1), spinner visible, clavier réactif
+- [x] USER VALIDATION : ESC → boot fresh, navigation TUI complète,
+      MIA_BOOT → ROM swap BASIC 1.1 confirmé en interactif
+- [x] END-TO-END : premier émulateur grand public supportant LOCI
+
 ### Sprint 34am: LOCI fix clavier — pre-seed PSG R7=$7F (v1.16.38-alpha) - DONE
 - [x] Cause racine identifiée par instrumentation (PCR/ay writes)
 - [x] ROM LOCI ne fait jamais ay_write_data(7) — dépend du firmware Pi Pico

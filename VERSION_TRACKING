@@ -1,12 +1,24 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.38-alpha
-Release Date: 2026-06-06
-Status: Alpha (LOCI fix clavier R7 seed — 445 tests pass)
+Current Version: 1.16.39-alpha
+Release Date: 2026-06-07
+Status: Alpha (LOCI fix MIA spin ABI — 448 tests pass — END-TO-END VALIDÉ)
 
 Version History:
 ----------------
+- 1.16.39-alpha (2026-06-07): LOCI fix critique MIA spin window ABI (Sprint 34an)
+  * Cause racine identifiée par ingé principal après review CR
+  * api_install_blocked/released_stub + extension api_set_ax
+  * Dispatch trigger $03AF avec contract complet 0x00/0xFF/autre
+  * seed_initial_stub au init/reset (released no-op A=X=SREG=0)
+  * 3 nouveaux tests DIFFÉRENTIELS 6502 (vrai cpu_step)
+  * Makefile test-loci link cpu6502 + memory
+  * 108 tests test-loci pass, 448 tests global
+  * VALIDATION USER : navigation TUI fonctionnelle, MIA_BOOT actif,
+    ROM swap vers BASIC 1.1 confirmé en interactif
+  * Phosphoric premier émulateur grand public LOCI end-to-end
+
 - 1.16.38-alpha (2026-06-06): LOCI fix clavier pre-seed PSG R7=$7F (Sprint 34am)
   * Cause racine : ROM LOCI ne programme jamais R7, dépend du firmware Pi Pico
   * Fix : main.c init psg.registers[7]=$7F après loci_init

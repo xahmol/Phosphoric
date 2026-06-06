@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.19-alpha] - 2026-06-06
+
+### Debug : disassembleur paginé avec historique — Sprint 34t
+
+#### Added
+- **Pagination du disasm** : `d` sans argument continue depuis la fin
+  de la dernière page (curseur persistant pendant la session debug).
+- **`d +`** : équivalent à `d` (page suivante explicite).
+- **`d -`** : recule d'une page via l'historique (ring de 16 entrées).
+  Affiche `(no previous page)` si rien à dépiler.
+- **`d ADDR [n]`** : saute à ADDR (ou symbole), pousse la page courante
+  dans l'historique pour permettre le retour via `d -`.
+- **Taille de page persistante** : `d ADDR N` mémorise N comme nouvelle
+  taille de page pour les futures `d` sans argument.
+
+#### Changed
+- `debugger_t` : ajout de `disasm_cursor`, `disasm_count`,
+  `disasm_cursor_valid`, `disasm_history[16]`, `disasm_history_top`.
+- `show_disassembly` retourne désormais l'adresse de fin de page
+  pour permettre la pagination.
+- Au break du debugger : curseur et historique reset → `d` montre
+  toujours depuis PC au premier appel d'une session.
+
 ## [1.16.18-alpha] - 2026-06-06
 
 ### Debug : chargement symboles (.sym / .lab / .sym65) — Sprint 34s

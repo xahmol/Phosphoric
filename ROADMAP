@@ -539,6 +539,16 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34t: Disassembleur paginé avec historique (v1.16.19-alpha) - DONE
+- [x] Curseur persistant : `d` sans argument continue depuis la fin
+      de la dernière page (reset à chaque break)
+- [x] `d +` (next) et `d -` (previous via historique ring 16 entrées)
+- [x] `d ADDR [n]` saute et pousse la page courante dans l'historique
+- [x] Taille de page persistante : `d ADDR N` mémorise N
+- [x] show_disassembly retourne l'adresse de fin de page
+- [x] Sprint déclenché par gap n°2 du comparatif debug vs Oricutron
+- [x] 340 tests pass
+
 ### Sprint 34s: Symboles debugger — chargement .sym/.lab/.sym65 (v1.16.18-alpha) - DONE
 - [x] Nouveau module utils/symbols (.h + .c)
 - [x] 4 formats auto-détectés :

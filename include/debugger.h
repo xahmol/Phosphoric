@@ -37,6 +37,13 @@ typedef struct debugger_s {
     /* Temporary breakpoint for step-over (next command) */
     uint16_t temp_breakpoint;
     bool     has_temp_breakpoint;
+
+    /* Disassembler pagination state */
+    uint16_t disasm_cursor;          /* Next page starts here */
+    uint8_t  disasm_count;           /* Page size (default 10) */
+    bool     disasm_cursor_valid;    /* False until first `d` */
+    uint16_t disasm_history[16];     /* Ring buffer of prior cursors */
+    uint8_t  disasm_history_top;     /* Number of entries currently held */
 } debugger_t;
 
 /**

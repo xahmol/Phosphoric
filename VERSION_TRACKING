@@ -1,12 +1,21 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.18-alpha
+Current Version: 1.16.19-alpha
 Release Date: 2026-06-06
-Status: Alpha (Symboles debugger .sym/.lab/.sym65 — 340 tests pass)
+Status: Alpha (Disasm paginé curseur+historique — 340 tests pass)
 
 Version History:
 ----------------
+- 1.16.19-alpha (2026-06-06): Disassembleur paginé avec historique (Sprint 34t)
+  * d  : page suivante (curseur persistant)
+  * d +/d - : navigation avant/arrière via historique 16 entrées
+  * d ADDR [n] : saute + pousse page courante dans l'historique
+  * Taille de page mémorisée jusqu'au prochain `d ADDR N`
+  * Reset curseur+historique à chaque break du debugger
+  * Sprint déclenché par gap n°2 du comparatif debug vs Oricutron
+  * 340 tests pass
+
 - 1.16.18-alpha (2026-06-06): Symboles debugger — .sym/.lab/.sym65 (Sprint 34s)
   * Module utils/symbols : 4 formats auto-détectés (addr-first $/no-$,
     EQU, VICE .lab), comments ;/#, séparateurs ,:=

@@ -181,7 +181,9 @@ static void show_registers(emulator_t* emu) {
     else     printf("%s\n", state);
 }
 
-static void show_disassembly(emulator_t* emu, uint16_t addr, int count) {
+/* Disassemble `count` instructions starting at `addr`. Returns the
+ * address of the byte just past the final instruction (next page start). */
+static uint16_t show_disassembly(emulator_t* emu, uint16_t addr, int count) {
     for (int i = 0; i < count; i++) {
         char buf[64];
         int bytes = cpu_disassemble(&emu->cpu, addr, buf, sizeof(buf));
@@ -200,6 +202,7 @@ static void show_disassembly(emulator_t* emu, uint16_t addr, int count) {
         printf("\n");
         addr = (uint16_t)(addr + bytes);
     }
+    return addr;
 }
 
 static void show_memory_dump(emulator_t* emu, uint16_t addr, int len) {
@@ -305,7 +308,10 @@ static void show_help(void) {
     printf("  n / next          Step over (JSR → break at return)\n");
     printf("  c / continue      Continue execution\n");
     printf("  r / regs          Show CPU registers\n");
-    printf("  d [addr] [n]      Disassemble (default: PC, 10)\n");
+    printf("  d                 Disassemble next page (page size persists)\n");
+    printf("  d addr [n]        Jump-disasm; push current page to history\n");
+    printf("  d +               Same as `d` (next page)\n");
+    printf("  d -               Pop history (previous page)\n");
     printf("  m addr [len]      Memory dump hex+ASCII (default: 256)\n");
     printf("  b addr            Add PC breakpoint\n");
     printf("  b                 List all breakpoints\n");
@@ -331,6 +337,12 @@ static void show_help(void) {
 void debugger_repl(debugger_t* dbg, emulator_t* emu) {
     dbg->active = true;
     dbg->step_mode = false;
+
+    /* Reset disasm pagination on every break — `d` first shows around PC,
+     * subsequent `d` calls page forward, `d -` walks back through the
+     * navigations done within this session. */
+    dbg->disasm_cursor_valid = false;
+    dbg->disasm_history_top = 0;
 
     /* Show current state on entry */
     printf("\n*** DEBUGGER BREAK at $%04X ***\n", emu->cpu.PC);
@@ -394,7 +406,7 @@ void debugger_repl(debugger_t* dbg, emulator_t* emu) {
         else if (strcmp(cmd, "r") == 0 || strcmp(cmd, "regs") == 0) {
             show_registers(emu);
         }
-        /* ── DISASSEMBLE ────────────────────────────────── */
+        /* ── SYMBOLS ────────────────────────────────────── */
         else if (strcmp(cmd, "sym") == 0) {
             if (!arg1[0]) {
                 if (emu->symbols.count == 0) {
@@ -420,18 +432,60 @@ void debugger_repl(debugger_t* dbg, emulator_t* emu) {
                 }
             }
         }
+        /* ── DISASSEMBLE (paginated) ────────────────────── */
         else if (strcmp(cmd, "d") == 0) {
-            uint16_t addr = emu->cpu.PC;
-            int count = 10;
-            if (arg1[0]) {
+            /* Initialise default page size on first use this session. */
+            if (dbg->disasm_count == 0) dbg->disasm_count = 10;
+
+            int count = dbg->disasm_count;
+            bool go_back = false;
+            uint16_t addr = dbg->disasm_cursor_valid ? dbg->disasm_cursor
+                                                     : emu->cpu.PC;
+
+            if (arg1[0] == '-' && arg1[1] == '\0') {
+                go_back = true;
+            } else if (arg1[0] == '+' && arg1[1] == '\0') {
+                /* "next page" — same as no arg */
+            } else if (arg1[0]) {
                 uint16_t a;
-                if (parse_addr(emu, arg1, &a)) addr = a;
+                if (parse_addr(emu, arg1, &a)) {
+                    addr = a;
+                } else {
+                    printf("  Unknown address/symbol: %s\n", arg1);
+                    continue;
+                }
             }
-            if (arg2[0])
-                count = atoi(arg2);
-            if (count < 1) count = 1;
-            if (count > 100) count = 100;
-            show_disassembly(emu, addr, count);
+            if (arg2[0]) {
+                int c = atoi(arg2);
+                if (c >= 1 && c <= 100) {
+                    count = c;
+                    dbg->disasm_count = (uint8_t)c;
+                }
+            }
+
+            if (go_back) {
+                /* Need at least 2 entries: top is current page start,
+                 * the one before is the previous one. */
+                if (dbg->disasm_history_top < 2) {
+                    printf("  (no previous page)\n");
+                    continue;
+                }
+                dbg->disasm_history_top--;   /* discard current */
+                addr = dbg->disasm_history[--dbg->disasm_history_top];
+            }
+
+            /* Push this page's start address to history (ring of 16). */
+            if (dbg->disasm_history_top < 16) {
+                dbg->disasm_history[dbg->disasm_history_top++] = addr;
+            } else {
+                for (int i = 1; i < 16; i++)
+                    dbg->disasm_history[i - 1] = dbg->disasm_history[i];
+                dbg->disasm_history[15] = addr;
+            }
+
+            uint16_t next = show_disassembly(emu, addr, count);
+            dbg->disasm_cursor = next;
+            dbg->disasm_cursor_valid = true;
         }
         /* ── MEMORY DUMP ────────────────────────────────── */
         else if (strcmp(cmd, "m") == 0) {

@@ -34,7 +34,7 @@
 #include "utils/symbols.h"
 #include "network/cast_server.h"
 
-#define EMU_VERSION "1.16.18-alpha"
+#define EMU_VERSION "1.16.19-alpha"
 
 /**
  * @brief ORIC machine model

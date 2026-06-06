@@ -539,6 +539,31 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34y: LOCI skeleton + dispatcher (v1.16.24-alpha) - DONE
+- [x] Module src/io/loci.c + include/io/loci.h
+- [x] Décodeur bus MIA $03A0-$03BF (register file 32 octets, R/W)
+- [x] Dispatcher 36 API ops (enum complet, op_name pour diag)
+- [x] Tous ops stubés ENOSYS (LOCI_ENOSYS = 13)
+- [x] xstack 256 octets avec push/pop via $03AC
+- [x] CLI --loci active le périph
+- [x] Hooks io_read_callback / io_write_callback (prioritaire avant ACIA/VIA)
+- [x] ROM LOCI v0.3.0 téléchargée roms/loci/locirom (16KB, reset $FF29)
+- [x] Boot ROM LOCI confirmé fonctionnel
+- [x] 11 tests test-loci ; total 351 tests pass
+- [x] Premier sprint série 34y→34ah pour LOCI complet
+
+### Roadmap LOCI (sprint backlog restant — DERIVÉ DU FIRMWARE)
+
+- **34z** : xstack window auto-inc + ops 0x01/04/0F-12 (système, RTC, RNG) ~250 LOC
+- **34aa** : File I/O ops 0x14-1C avec host fs (POSIX-like) ~400 LOC
+- **34ab** : mount/umount 0x90-91 (mount points host) ~200 LOC
+- **34ac** : Dir API 0x80-83/88 + uname 0x98 ~250 LOC
+- **34ad** : ROM swap runtime via API call + --loci-rom FILE ~150 LOC
+- **34ae** : Multi-drive WD179x extension $0310-$0318 ~300 LOC
+- **34af** : TAP $0315-$0317 + ops 0x92-94 ~200 LOC
+- **34ag** : USB HID stubs (kbd/mou/pad) PIX XREG channels 0x000-2 ~250 LOC
+- **34ah** : Tests intégration ROM LOCI réelle, scénarios bootés
+
 ### Sprint 34x: Cycle counts dans le disasm (v1.16.23-alpha) - DONE
 - [x] cpu_opcode_cycles(opcode) : nouvelle API publique cpu6502.h
 - [x] REPL show_disassembly : "  ; N cyc" après chaque instruction

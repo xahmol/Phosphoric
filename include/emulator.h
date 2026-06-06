@@ -32,9 +32,10 @@
 #include "utils/trace.h"
 #include "utils/profiler.h"
 #include "utils/symbols.h"
+#include "io/loci.h"
 #include "network/cast_server.h"
 
-#define EMU_VERSION "1.16.23-alpha"
+#define EMU_VERSION "1.16.24-alpha"
 
 /**
  * @brief ORIC machine model
@@ -177,6 +178,11 @@ typedef struct emulator_s {
 
     /* Symbol table for debugger (loaded via --symbols) */
     symbol_table_t symbols;
+
+    /* LOCI peripheral (Lovely Oric Computer Interface, sodiumlb 2024).
+     * Only active when --loci is passed; reserves MIA bus at $03A0-$03BF. */
+    loci_t loci;
+    bool   has_loci;
 
     /* TUI mode flag: when true, breakpoints route to the ncurses TUI
      * instead of the line-based REPL (build with TUI=1). */

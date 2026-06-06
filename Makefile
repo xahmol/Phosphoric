@@ -50,6 +50,7 @@ SOURCES = src/main.c \
           src/io/mcp40.c \
           src/io/cassette.c \
           src/io/microdisc.c \
+          src/io/loci.c \
           src/io/acia6551.c \
           src/io/serial_backend.c \
           src/video/video.c \
@@ -102,7 +103,7 @@ BINDIR = $(PREFIX)/bin
 DATADIR = $(PREFIX)/share/phosphoric
 DOCDIR = $(PREFIX)/share/doc/phosphoric
 
-.PHONY: all clean tools tests test-cpu test-memory test-io test-storage test-system test-rom test-video test-audio test-debugger test-cast test-savestate test-atmos test-joystick test-printer test-mcp40 test-renderer test-trace test-profiler test-rominfo test-serial test-keyboard test-symbols valgrind static-analysis cppcheck flawfinder security-check coverage coverage-report install uninstall help
+.PHONY: all clean tools tests test-cpu test-memory test-io test-storage test-system test-rom test-video test-audio test-debugger test-cast test-savestate test-atmos test-joystick test-printer test-mcp40 test-renderer test-trace test-profiler test-rominfo test-serial test-keyboard test-symbols test-loci valgrind static-analysis cppcheck flawfinder security-check coverage coverage-report install uninstall help
 
 all: $(TARGET)
 
@@ -280,6 +281,12 @@ test-symbols: $(TEST_SYMBOLS_SRCS)
 	@$(CC) $(CFLAGS) $(TEST_SYMBOLS_SRCS) $(LDFLAGS) -o test_symbols
 	@./test_symbols
 
+TEST_LOCI_SRCS = tests/unit/test_loci.c src/io/loci.c src/utils/logging.c
+
+test-loci: $(TEST_LOCI_SRCS)
+	@$(CC) $(CFLAGS) $(TEST_LOCI_SRCS) $(LDFLAGS) -o test_loci
+	@./test_loci
+
 TEST_SERIAL_SRCS = tests/unit/test_serial.c src/io/acia6551.c \
                    src/io/serial_backend.c src/utils/logging.c
 
@@ -306,7 +313,7 @@ test-coverage: $(TEST_COVERAGE_SRCS)
 	@$(CC) $(CFLAGS) $(TEST_COVERAGE_SRCS) $(LDFLAGS) -o test_coverage
 	@./test_coverage
 
-tests: test-cpu test-memory test-io test-storage test-system test-video test-audio test-debugger test-savestate test-atmos test-joystick test-printer test-mcp40 test-renderer test-trace test-profiler test-rominfo test-serial test-keyboard test-symbols test-coverage
+tests: test-cpu test-memory test-io test-storage test-system test-video test-audio test-debugger test-savestate test-atmos test-joystick test-printer test-mcp40 test-renderer test-trace test-profiler test-rominfo test-serial test-keyboard test-symbols test-loci test-coverage
 	@echo ""
 	@echo "═══════════════════════════════════════════════════════"
 	@echo "  All test suites completed!"

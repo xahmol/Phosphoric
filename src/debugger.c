@@ -9,9 +9,11 @@
  * memory dump, disassembly, register inspection, and more.
  */
 
+#define _DEFAULT_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <ctype.h>
 
 #include "debugger.h"
@@ -52,22 +54,116 @@ void debugger_init(debugger_t* dbg) {
 /*  BREAKPOINT MANAGEMENT                                              */
 /* ═══════════════════════════════════════════════════════════════════ */
 
+/* Parse "REG OP VALUE" or "M[ADDR] OP VALUE".
+ * Returns true on success and fills out_cond. Whitespace is permissive.
+ * VALUE: hex ($XX or 0xXX), decimal, or symbol name from emu->symbols. */
+static const char* skip_ws(const char* s) {
+    while (*s && isspace((unsigned char)*s)) s++;
+    return s;
+}
+
+static bool parse_condition(const emulator_t* emu, const char* text,
+                            bp_condition_t* out) {
+    memset(out, 0, sizeof(*out));
+    const char* p = skip_ws(text);
+
+    /* Operand: A, X, Y, SP, P, PC, or M[ADDR] */
+    if (p[0] == 'M' && p[1] == '[') {
+        const char* a = p + 2;
+        char addr_buf[48];
+        size_t n = 0;
+        while (a[n] && a[n] != ']' && n < sizeof(addr_buf) - 1) {
+            addr_buf[n] = a[n]; n++;
+        }
+        if (a[n] != ']') return false;
+        addr_buf[n] = '\0';
+        uint16_t addr;
+        if (!symbol_resolve(&emu->symbols, addr_buf, &addr)) {
+            const char* s = addr_buf;
+            if (*s == '$') s++;
+            else if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
+            char* end = NULL;
+            unsigned long v = strtoul(s, &end, 16);
+            if (end == s) return false;
+            addr = (uint16_t)v;
+        }
+        out->operand = BP_OPERAND_MEM;
+        out->mem_addr = addr;
+        p = a + n + 1;
+    } else if (p[0] == 'P' && p[1] == 'C' && !isalnum((unsigned char)p[2])) {
+        out->operand = BP_OPERAND_PC; p += 2;
+    } else if (p[0] == 'S' && p[1] == 'P' && !isalnum((unsigned char)p[2])) {
+        out->operand = BP_OPERAND_SP; p += 2;
+    } else if ((p[0] == 'A' || p[0] == 'X' || p[0] == 'Y' || p[0] == 'P')
+               && !isalnum((unsigned char)p[1])) {
+        switch (p[0]) {
+            case 'A': out->operand = BP_OPERAND_A; break;
+            case 'X': out->operand = BP_OPERAND_X; break;
+            case 'Y': out->operand = BP_OPERAND_Y; break;
+            case 'P': out->operand = BP_OPERAND_P; break;
+        }
+        p++;
+    } else {
+        return false;
+    }
+
+    p = skip_ws(p);
+
+    /* Operator */
+    if (p[0] == '=' && p[1] == '=') { out->op = BP_OP_EQ; p += 2; }
+    else if (p[0] == '!' && p[1] == '=') { out->op = BP_OP_NE; p += 2; }
+    else if (p[0] == '<' && p[1] == '=') { out->op = BP_OP_LE; p += 2; }
+    else if (p[0] == '>' && p[1] == '=') { out->op = BP_OP_GE; p += 2; }
+    else if (p[0] == '<') { out->op = BP_OP_LT; p++; }
+    else if (p[0] == '>') { out->op = BP_OP_GT; p++; }
+    else return false;
+
+    p = skip_ws(p);
+
+    /* RHS value: hex, decimal, or symbol */
+    char rhs_buf[48];
+    size_t n = 0;
+    while (p[n] && !isspace((unsigned char)p[n]) && n < sizeof(rhs_buf) - 1) {
+        rhs_buf[n] = p[n]; n++;
+    }
+    rhs_buf[n] = '\0';
+    if (n == 0) return false;
+    uint16_t v16;
+    if (symbol_resolve(&emu->symbols, rhs_buf, &v16)) {
+        out->value = v16;
+    } else {
+        const char* s = rhs_buf;
+        int base = 10;
+        if (*s == '$') { s++; base = 16; }
+        else if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) { s += 2; base = 16; }
+        else if (strchr(s, 'A') || strchr(s, 'B') || strchr(s, 'C') ||
+                 strchr(s, 'D') || strchr(s, 'E') || strchr(s, 'F') ||
+                 strchr(s, 'a') || strchr(s, 'b') || strchr(s, 'c') ||
+                 strchr(s, 'd') || strchr(s, 'e') || strchr(s, 'f')) base = 16;
+        char* end = NULL;
+        unsigned long v = strtoul(s, &end, base);
+        if (end == s) return false;
+        out->value = (uint32_t)v;
+    }
+    return true;
+}
+
 int debugger_add_breakpoint(debugger_t* dbg, uint16_t addr) {
     if (dbg->num_breakpoints >= DEBUGGER_MAX_BREAKPOINTS)
         return -1;
-    /* Check for duplicate */
     for (int i = 0; i < dbg->num_breakpoints; i++) {
-        if (dbg->breakpoints[i] == addr)
+        if (dbg->breakpoints[i].addr == addr && !dbg->breakpoints[i].has_cond)
             return i;
     }
-    dbg->breakpoints[dbg->num_breakpoints] = addr;
+    breakpoint_t* bp = &dbg->breakpoints[dbg->num_breakpoints];
+    memset(bp, 0, sizeof(*bp));
+    bp->addr = addr;
     return dbg->num_breakpoints++;
 }
 
 bool debugger_remove_breakpoint(debugger_t* dbg, int index) {
     if (index < 0 || index >= dbg->num_breakpoints)
         return false;
-    /* Shift remaining breakpoints down */
     for (int i = index; i < dbg->num_breakpoints - 1; i++) {
         dbg->breakpoints[i] = dbg->breakpoints[i + 1];
     }
@@ -75,10 +171,50 @@ bool debugger_remove_breakpoint(debugger_t* dbg, int index) {
     return true;
 }
 
+/* Evaluate a condition against current emulator state. */
+static bool eval_cond(const bp_condition_t* c, const emulator_t* emu) {
+    uint32_t lhs = 0;
+    switch (c->operand) {
+        case BP_OPERAND_A:  lhs = emu->cpu.A;  break;
+        case BP_OPERAND_X:  lhs = emu->cpu.X;  break;
+        case BP_OPERAND_Y:  lhs = emu->cpu.Y;  break;
+        case BP_OPERAND_SP: lhs = emu->cpu.SP; break;
+        case BP_OPERAND_P:  lhs = emu->cpu.P;  break;
+        case BP_OPERAND_PC: lhs = emu->cpu.PC; break;
+        case BP_OPERAND_MEM:
+            lhs = memory_read((memory_t*)&emu->memory, c->mem_addr);
+            break;
+        default: return false;
+    }
+    uint32_t rhs = c->value;
+    switch (c->op) {
+        case BP_OP_EQ: return lhs == rhs;
+        case BP_OP_NE: return lhs != rhs;
+        case BP_OP_LT: return lhs <  rhs;
+        case BP_OP_LE: return lhs <= rhs;
+        case BP_OP_GT: return lhs >  rhs;
+        case BP_OP_GE: return lhs >= rhs;
+    }
+    return false;
+}
+
 bool debugger_is_breakpoint(const debugger_t* dbg, uint16_t pc) {
+    /* Without emulator state we can't evaluate conditions — caller (cpu_step
+     * path) uses debugger_check_pc() instead for full evaluation. This stays
+     * for legacy callers and simply matches on address (acts as a fast pre-filter). */
     for (int i = 0; i < dbg->num_breakpoints; i++) {
-        if (dbg->breakpoints[i] == pc)
+        if (dbg->breakpoints[i].addr == pc)
             return true;
+    }
+    return false;
+}
+
+/* Full PC-breakpoint check including condition evaluation. */
+static bool debugger_check_pc(const debugger_t* dbg, const emulator_t* emu) {
+    for (int i = 0; i < dbg->num_breakpoints; i++) {
+        if (dbg->breakpoints[i].addr != emu->cpu.PC) continue;
+        if (!dbg->breakpoints[i].has_cond) return true;
+        if (eval_cond(&dbg->breakpoints[i].cond, emu)) return true;
     }
     return false;
 }
@@ -155,8 +291,9 @@ bool debugger_should_break(debugger_t* dbg, emulator_t* emu) {
         return true;
     }
 
-    /* PC breakpoint hit */
-    if (debugger_is_breakpoint(dbg, pc))
+    /* PC breakpoint hit (evaluates condition if present) */
+    (void)pc;
+    if (debugger_check_pc(dbg, emu))
         return true;
 
     /* Watchpoint triggered */
@@ -314,6 +451,9 @@ static void show_help(void) {
     printf("  d -               Pop history (previous page)\n");
     printf("  m addr [len]      Memory dump hex+ASCII (default: 256)\n");
     printf("  b addr            Add PC breakpoint\n");
+    printf("  b addr if EXPR    Conditional breakpoint\n");
+    printf("                    EXPR: REG op VAL | M[ADDR] op VAL\n");
+    printf("                    REG: A X Y SP P PC   op: == != < <= > >=\n");
     printf("  b                 List all breakpoints\n");
     printf("  bd n              Delete breakpoint #n\n");
     printf("  w addr            Add write watchpoint\n");
@@ -508,15 +648,17 @@ void debugger_repl(debugger_t* dbg, emulator_t* emu) {
         /* ── BREAKPOINT ─────────────────────────────────── */
         else if (strcmp(cmd, "b") == 0) {
             if (!arg1[0]) {
-                /* List breakpoints */
                 if (dbg->num_breakpoints == 0) {
                     printf("  No breakpoints set\n");
                 } else {
                     printf("  Breakpoints:\n");
                     for (int i = 0; i < dbg->num_breakpoints; i++) {
-                        const char* s = symbol_lookup(&emu->symbols, dbg->breakpoints[i]);
-                        if (s) printf("    #%d: $%04X  %s\n", i, dbg->breakpoints[i], s);
-                        else   printf("    #%d: $%04X\n", i, dbg->breakpoints[i]);
+                        breakpoint_t* bp = &dbg->breakpoints[i];
+                        const char* s = symbol_lookup(&emu->symbols, bp->addr);
+                        printf("    #%d: $%04X", i, bp->addr);
+                        if (s) printf("  %s", s);
+                        if (bp->has_cond) printf("  if %s", bp->cond_text);
+                        printf("\n");
                     }
                 }
             } else {
@@ -525,12 +667,45 @@ void debugger_repl(debugger_t* dbg, emulator_t* emu) {
                     printf("  Unknown address/symbol: %s\n", arg1);
                     continue;
                 }
+                /* Detect optional "if <expression>" after the address.
+                 * sscanf collected the address into arg1 and the next
+                 * token into arg2; everything else lives in `line` after
+                 * the prefix "<cmd> <addr> if ". Find that "if". */
+                const char* if_pos = NULL;
+                if (strncasecmp(arg2, "if", 2) == 0 && !arg2[2]) {
+                    /* arg2 is literally "if" — find it in the raw line. */
+                    const char* p = strstr(line, " if ");
+                    if (p) if_pos = skip_ws(p + 4);
+                }
                 int idx = debugger_add_breakpoint(dbg, addr);
-                if (idx >= 0)
-                    printf("  Breakpoint #%d set at $%04X\n", idx, addr);
-                else
+                if (idx < 0) {
                     printf("  Error: maximum breakpoints reached (%d)\n",
                            DEBUGGER_MAX_BREAKPOINTS);
+                    continue;
+                }
+                if (if_pos && *if_pos) {
+                    bp_condition_t cond;
+                    if (!parse_condition(emu, if_pos, &cond)) {
+                        debugger_remove_breakpoint(dbg, idx);
+                        printf("  Invalid condition: %s\n", if_pos);
+                        printf("  Syntax: REG op VALUE  or  M[ADDR] op VALUE\n");
+                        printf("  REG: A X Y SP P PC   op: == != < <= > >=\n");
+                        continue;
+                    }
+                    breakpoint_t* bp = &dbg->breakpoints[idx];
+                    bp->has_cond = true;
+                    bp->cond = cond;
+                    strncpy(bp->cond_text, if_pos, sizeof(bp->cond_text) - 1);
+                    bp->cond_text[sizeof(bp->cond_text) - 1] = '\0';
+                    /* Strip trailing newline / whitespace */
+                    size_t cl = strlen(bp->cond_text);
+                    while (cl > 0 && isspace((unsigned char)bp->cond_text[cl-1]))
+                        bp->cond_text[--cl] = '\0';
+                    printf("  Breakpoint #%d set at $%04X if %s\n",
+                           idx, addr, bp->cond_text);
+                } else {
+                    printf("  Breakpoint #%d set at $%04X\n", idx, addr);
+                }
             }
         }
         /* ── BREAKPOINT DELETE ──────────────────────────── */

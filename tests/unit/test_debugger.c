@@ -74,7 +74,7 @@ TEST(test_add_remove_breakpoint) {
     int idx0 = debugger_add_breakpoint(&dbg, 0x1234);
     ASSERT_EQ(idx0, 0);
     ASSERT_EQ(dbg.num_breakpoints, 1);
-    ASSERT_EQ(dbg.breakpoints[0], 0x1234);
+    ASSERT_EQ(dbg.breakpoints[0].addr, 0x1234);
 
     int idx1 = debugger_add_breakpoint(&dbg, 0xF42D);
     ASSERT_EQ(idx1, 1);
@@ -88,7 +88,7 @@ TEST(test_add_remove_breakpoint) {
     /* Remove first breakpoint */
     ASSERT_TRUE(debugger_remove_breakpoint(&dbg, 0));
     ASSERT_EQ(dbg.num_breakpoints, 1);
-    ASSERT_EQ(dbg.breakpoints[0], 0xF42D);
+    ASSERT_EQ(dbg.breakpoints[0].addr, 0xF42D);
 
     /* Remove remaining */
     ASSERT_TRUE(debugger_remove_breakpoint(&dbg, 0));

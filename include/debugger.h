@@ -21,9 +21,35 @@
 /* Forward declaration for emulator (avoids circular include) */
 typedef struct emulator_s emulator_t;
 
+/* Conditional-breakpoint operand and comparison. */
+typedef enum {
+    BP_OPERAND_NONE = 0,
+    BP_OPERAND_A,    BP_OPERAND_X,    BP_OPERAND_Y,
+    BP_OPERAND_SP,   BP_OPERAND_P,    BP_OPERAND_PC,
+    BP_OPERAND_MEM   /* M[addr] */
+} bp_operand_t;
+
+typedef enum {
+    BP_OP_EQ, BP_OP_NE, BP_OP_LT, BP_OP_LE, BP_OP_GT, BP_OP_GE
+} bp_op_t;
+
+typedef struct {
+    bp_operand_t operand;
+    uint16_t     mem_addr;   /* Only used when operand == BP_OPERAND_MEM */
+    bp_op_t      op;
+    uint32_t     value;
+} bp_condition_t;
+
+typedef struct {
+    uint16_t       addr;
+    bool           has_cond;
+    bp_condition_t cond;
+    char           cond_text[48];   /* Verbatim user text for listing */
+} breakpoint_t;
+
 typedef struct debugger_s {
-    uint16_t breakpoints[DEBUGGER_MAX_BREAKPOINTS];
-    uint8_t  num_breakpoints;
+    breakpoint_t breakpoints[DEBUGGER_MAX_BREAKPOINTS];
+    uint8_t      num_breakpoints;
 
     uint16_t watchpoints[DEBUGGER_MAX_WATCHPOINTS];
     uint8_t  num_watchpoints;

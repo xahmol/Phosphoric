@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.20-alpha] - 2026-06-06
+
+### Debug : breakpoints conditionnels — Sprint 34u
+
+#### Added
+- **Syntaxe `b ADDR if EXPR`** : breakpoint qui ne déclenche que si
+  EXPR est vrai à l'arrivée du PC. Restent compatibles avec les
+  breakpoints simples (sans `if`).
+- **Opérandes** : `A`, `X`, `Y`, `SP`, `P`, `PC`, `M[ADDR]`.
+  L'adresse mémoire accepte hex (`$XXXX`, `0xXXXX`) ou symbole.
+- **Opérateurs** : `==`, `!=`, `<`, `<=`, `>`, `>=`.
+- **Valeurs RHS** : hex (préfixé ou avec chiffres A-F implicites),
+  décimal, ou nom de symbole (résolu via la table chargée).
+- **Listing** : `b` affiche la condition à droite de l'adresse si elle
+  existe (`#0: $F84A  if A == $00`).
+
+#### Changed
+- `debugger_t.breakpoints` passe de `uint16_t[]` à `breakpoint_t[]`
+  (struct avec `addr`, `has_cond`, `cond`, `cond_text`).
+- Nouveau type `bp_condition_t` (operand + op + value + mem_addr).
+- `debugger_should_break` route via une nouvelle fonction interne
+  `debugger_check_pc` qui évalue la condition. `debugger_is_breakpoint`
+  reste un pré-filtre rapide par adresse.
+- `test_debugger.c` : accès mis à jour de `dbg.breakpoints[0]` vers
+  `.addr`.
+
 ## [1.16.19-alpha] - 2026-06-06
 
 ### Debug : disassembleur paginé avec historique — Sprint 34t

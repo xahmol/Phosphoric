@@ -1732,6 +1732,53 @@ TEST(test_action_re_press_after_release) {
     ASSERT_EQ(cap.release_count, 2);
 }
 
+/* ── 34aj: F5/F8 SDL bindings — Reset preserves mounts ───────── */
+
+TEST(test_loci_reset_preserves_mounts) {
+    /* Sprint 34aj: F5 also calls loci_reset() when --loci is active.
+     * Verify that loci_reset zeroes MIA register state but keeps the
+     * mount table + open file handles. */
+    char* tmpdir = make_tmpdir();
+    char* dsk_path = make_blob(tmpdir, "side.dsk", 32);
+    char* tap_path = make_tap_with_one_header(tmpdir, "tape.tap");
+
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_flash_root(&l, tmpdir);
+
+    /* Mount drive 0 and a tape. */
+    push_path(&l, "side.dsk");
+    l.regs[LOCI_REG_API_A] = 0;
+    loci_write(&l, 0x03AF, LOCI_OP_MOUNT);
+    push_path(&l, "tape.tap");
+    l.regs[LOCI_REG_API_A] = LOCI_MNT_TAP;
+    loci_write(&l, 0x03AF, LOCI_OP_MOUNT);
+    ASSERT_TRUE(l.mnt_mounted[0]);
+    ASSERT_TRUE(l.mnt_mounted[LOCI_MNT_TAP]);
+    ASSERT_TRUE(l.dsk_fp[0] != NULL);
+    ASSERT_TRUE(l.tap_fp   != NULL);
+
+    /* Dirty some MIA state. */
+    loci_write(&l, 0x03AC, 0xAA);   /* xstack push */
+    ASSERT_TRUE(l.xstack_ptr < LOCI_XSTACK_SIZE);
+
+    /* Hard reset (= F5 path) */
+    loci_reset(&l);
+
+    /* MIA state cleared. */
+    ASSERT_EQ(l.xstack_ptr, LOCI_XSTACK_SIZE);
+    ASSERT_EQ(l.regs[LOCI_REG_API_OP], 0);
+
+    /* Mounts preserved — this is what makes the LOCI reset "warm". */
+    ASSERT_TRUE(l.mnt_mounted[0]);
+    ASSERT_TRUE(l.mnt_mounted[LOCI_MNT_TAP]);
+    ASSERT_TRUE(l.dsk_fp[0] != NULL);
+    ASSERT_TRUE(l.tap_fp   != NULL);
+
+    unlink(dsk_path); unlink(tap_path); rmdir(tmpdir);
+    loci_cleanup(&l); free(dsk_path); free(tap_path); free(tmpdir);
+}
+
 /* ── reset ──────────────────────────────────────────────────── */
 
 TEST(test_reset_clears_state) {
@@ -1847,6 +1894,7 @@ int main(void) {
     RUN(test_action_disabled_loci_is_noop);
     RUN(test_action_works_without_callbacks);
     RUN(test_action_re_press_after_release);
+    RUN(test_loci_reset_preserves_mounts);
     RUN(test_reset_clears_state);
 
     printf("\n===========================================================\n");

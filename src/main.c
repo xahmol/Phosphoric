@@ -257,7 +257,8 @@ static void print_usage(const char* program_name) {
     printf("  F2  - Quick save state\n");
     printf("  F3  - Cycle display scale (x1 → x2 → x3 → x4)\n");
     printf("  F4  - Quick load state\n");
-    printf("  F5  - Reset\n");
+    printf("  F5  - Reset (with --loci : also resets MIA state, keeps mounts)\n");
+    printf("  F8  - LOCI Action button (warm short press / release on key up)\n");
     printf("  F9  - Enter debugger\n");
     printf("  F10 - Quit\n");
     printf("  F11 - Fullscreen\n");
@@ -1187,6 +1188,25 @@ static void emulator_run(emulator_t* emu) {
                         break;
                     case SDLK_F5:
                         cpu_reset(&emu->cpu);
+                        if (emu->has_loci) {
+                            /* Sprint 34aj: LOCI reset button — clears MIA
+                             * state (regs/xstack/active_op) but keeps the
+                             * mount table and open file handles so the
+                             * user's drives stay attached. Equivalent to
+                             * the Pi Pico reset on real LOCI hardware. */
+                            loci_reset(&emu->loci);
+                            log_info("LOCI: MIA state reset (mounts preserved)");
+                        }
+                        break;
+                    case SDLK_F8:
+                        /* Sprint 34ai: LOCI Action button (warm short press).
+                         * Installs the IRQ trap and triggers an interrupt so
+                         * the LOCI ROM can take over (save-state menu, etc.).
+                         * Release on KEYUP below. */
+                        if (emu->has_loci) {
+                            loci_action_button_short(&emu->loci);
+                            log_info("LOCI: Action button pressed (F8)");
+                        }
                         break;
                     case SDLK_F7: {
                         /* Memory dump: save 64KB RAM to timestamped file */
@@ -1230,6 +1250,13 @@ static void emulator_run(emulator_t* emu) {
                     }
                     break;
                 case SDL_KEYUP:
+                    if (event.key.keysym.sym == SDLK_F8 && emu->has_loci) {
+                        /* Sprint 34ai: Action button release sets V flag
+                         * so the BVC spin exits and JMP ($FFFA) runs the
+                         * save-state handler. */
+                        loci_action_button_release(&emu->loci);
+                        log_info("LOCI: Action button released (F8)");
+                    }
                     if (!oric_joystick_handle_sdl_event(&emu->joystick, &event)) {
                         oric_keyboard_handle_sdl_event(&emu->keyboard, &event);
                     }

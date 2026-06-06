@@ -1,12 +1,18 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.34-alpha
+Current Version: 1.16.35-alpha
 Release Date: 2026-06-06
-Status: Alpha (LOCI action button IRQ trap — 435 tests pass)
+Status: Alpha (LOCI F5/F8 SDL bindings — 436 tests pass)
 
 Version History:
 ----------------
+- 1.16.35-alpha (2026-06-06): LOCI F5/F8 SDL bindings (Sprint 34aj)
+  * F8 KEYDOWN/UP → loci_action_button_short/release
+  * F5 + --loci → cpu_reset + loci_reset (preserve mounts)
+  * 1 nouveau test garantit loci_reset preserve mounts
+  * 96 tests test-loci, 436 global
+
 - 1.16.34-alpha (2026-06-06): LOCI action button warm IRQ trap (Sprint 34ai)
   * loci_action_button_short/release + set_action_callbacks
   * Trap 6 octets B8/50 FE/6C FA FF mirroré $03BA-$03BF MIA

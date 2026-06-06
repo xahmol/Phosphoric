@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.35-alpha] - 2026-06-06
+
+### LOCI : Bindings clavier SDL F5 + F8 — Sprint 34aj
+
+#### Added
+- **F8** : LOCI Action button au runtime.
+  - `KEYDOWN F8` → `loci_action_button_short(&emu->loci)` :
+    installe le trap IRQ + déclenche IRQ
+  - `KEYUP F8` → `loci_action_button_release(&emu->loci)` :
+    set V flag + restore vecteur IRQ original
+- **F5** étendu : si `--loci` actif, appelle aussi `loci_reset(&emu->loci)`
+  après `cpu_reset()`. Préserve les drives mounted et les fichiers
+  ouverts (équivalent du reset bouton Pi Pico sur le hardware réel).
+- Help text mis à jour avec les nouveaux bindings.
+- **1 nouveau test** garantit que `loci_reset()` préserve bien les
+  mounts (régression critique pour le warm-reset).
+
+#### Validation
+La ROM LOCI v0.3.0 peut désormais être pilotée interactivement en mode
+SDL : F8 pour interrompre l'Oric et donner la main au menu LOCI,
+F5 pour reset à chaud sans perdre la configuration des drives.
+
 ## [1.16.34-alpha] - 2026-06-06
 
 ### LOCI : Action button (warm IRQ trap) — Sprint 34ai

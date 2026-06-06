@@ -1779,6 +1779,73 @@ TEST(test_loci_reset_preserves_mounts) {
     loci_cleanup(&l); free(dsk_path); free(tap_path); free(tmpdir);
 }
 
+/* ── 34ak: SDL → HID bridge (mapping et bitmap conventions) ──── */
+
+/* Pas de dépendance SDL ici — on teste juste que le format HID utilisé
+ * par le bridge SDL est cohérent avec les keycodes documentés du firmware.
+ * Le bridge lui-même est dans main.c et utilise SDL_GetKeyboardState. */
+
+TEST(test_hid_a_is_0x04) {
+    /* Boot keyboard HID usage page : A = 0x04 (same as SDL_SCANCODE_A). */
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    pix_xreg_mia(&l, 0, 0, 0x2000);   /* set kbd_xram */
+    uint8_t kc[6] = {0x04, 0, 0, 0, 0, 0};
+    loci_kbd_set_report(&l, 0, kc);
+    /* Bit (4 & 7) = bit 4 of byte (4 >> 3) = byte 0. */
+    ASSERT_EQ(l.xram[0x2000] & 0x10, 0x10);
+}
+
+TEST(test_hid_enter_is_0x28) {
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    pix_xreg_mia(&l, 0, 0, 0x2000);
+    uint8_t kc[6] = {0x28, 0, 0, 0, 0, 0};
+    loci_kbd_set_report(&l, 0, kc);
+    /* 0x28 >> 3 = 5, 0x28 & 7 = 0 → byte 5 bit 0. */
+    ASSERT_EQ(l.xram[0x2000 + 5] & 0x01, 0x01);
+}
+
+TEST(test_hid_up_arrow_is_0x52) {
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    pix_xreg_mia(&l, 0, 0, 0x2000);
+    uint8_t kc[6] = {0x52, 0, 0, 0, 0, 0};
+    loci_kbd_set_report(&l, 0, kc);
+    /* 0x52 >> 3 = 10, 0x52 & 7 = 2 → byte 10 bit 2. */
+    ASSERT_EQ(l.xram[0x2000 + 10] & 0x04, 0x04);
+}
+
+TEST(test_hid_six_simultaneous_keys) {
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    pix_xreg_mia(&l, 0, 0, 0x2000);
+    /* Press A,B,C,D,E,F simultaneously (HID 0x04..0x09). */
+    uint8_t kc[6] = {0x04, 0x05, 0x06, 0x07, 0x08, 0x09};
+    loci_kbd_set_report(&l, 0, kc);
+    /* All 6 bits in byte 0 + byte 1 should be set (bits 4..7 of byte 0
+     * + bits 0..1 of byte 1). */
+    ASSERT_EQ(l.xram[0x2000] & 0xF0, 0xF0);   /* A,B,C,D in bits 4-7 */
+    ASSERT_EQ(l.xram[0x2001] & 0x03, 0x03);   /* E,F in bits 0-1 */
+}
+
+TEST(test_hid_release_clears_corresponding_bits) {
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    pix_xreg_mia(&l, 0, 0, 0x2000);
+
+    /* Press A. */
+    uint8_t k1[6] = {0x04, 0, 0, 0, 0, 0};
+    loci_kbd_set_report(&l, 0, k1);
+    ASSERT_EQ(l.xram[0x2000] & 0x10, 0x10);
+
+    /* Release: empty report = all bits clear + sentinel. */
+    uint8_t k2[6] = {0, 0, 0, 0, 0, 0};
+    loci_kbd_set_report(&l, 0, k2);
+    ASSERT_EQ(l.xram[0x2000] & 0x10, 0);
+    ASSERT_EQ(l.xram[0x2000] & 0x01, 0x01);   /* no-key sentinel */
+}
+
 /* ── reset ──────────────────────────────────────────────────── */
 
 TEST(test_reset_clears_state) {
@@ -1895,6 +1962,11 @@ int main(void) {
     RUN(test_action_works_without_callbacks);
     RUN(test_action_re_press_after_release);
     RUN(test_loci_reset_preserves_mounts);
+    RUN(test_hid_a_is_0x04);
+    RUN(test_hid_enter_is_0x28);
+    RUN(test_hid_up_arrow_is_0x52);
+    RUN(test_hid_six_simultaneous_keys);
+    RUN(test_hid_release_clears_corresponding_bits);
     RUN(test_reset_clears_state);
 
     printf("\n===========================================================\n");

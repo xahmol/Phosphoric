@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.36-alpha] - 2026-06-06
+
+### LOCI : bridge SDL keyboard → HID bitmap — Sprint 34ak
+
+#### Added
+- **`loci_sync_kbd_from_sdl(emu)`** dans `main.c` :
+  - Lit `SDL_GetKeyboardState()` (état global up/down de toutes les touches)
+  - Convertit `SDL_GetModState()` en byte modifier HID
+  - Collecte les 6 premiers scancodes pressés (boot keyboard limit)
+  - Appelle `loci_kbd_set_report(modifier, keycodes[6])`
+- **Hook KEYDOWN + KEYUP** : sync appelé après le handler clavier
+  Phosphoric pour mirroir l'état SDL → bitmap LOCI 32 octets.
+- Mapping **1:1 SDL scancode → HID usage code** : SDL_SCANCODE_* correspond
+  exactement aux codes HID Keyboard/Keypad usage page par design SDL.
+- **5 nouveaux tests test-loci** (total 101) qui valident le format
+  bitmap LOCI sur des HID codes représentatifs : A (0x04), Enter (0x28),
+  Up arrow (0x52), 6 touches simultanées (A-F), release efface bits.
+
+#### Boucle interactive complète
+La ROM LOCI v0.3.0 est maintenant **pleinement utilisable** :
+```bash
+./oric1-emu -r roms/loci/locirom --loci --loci-flash ~/loci-vfs
+```
+- Frapper des touches navigue dans le TUI LOCI
+- F8 interrompt l'Oric et active le menu save/restore
+- F5 reset à chaud sans perdre les drives
+
+#### Bilan série LOCI (12 sprints)
+12 sprints livrés : 34y, z, aa, ab, ac, ad, ae, af, ag, ah, ai, aj, ak.
+28/36 ops API + bus DSK/TAP + boutons Action/Reset + bridge SDL HID.
+101 tests test-loci, ~3500 LOC LOCI ajoutées.
+
 ## [1.16.35-alpha] - 2026-06-06
 
 ### LOCI : Bindings clavier SDL F5 + F8 — Sprint 34aj

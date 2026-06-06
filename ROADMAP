@@ -539,6 +539,17 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34ak: LOCI bridge SDL keyboard → HID (v1.16.36-alpha) - DONE
+- [x] loci_sync_kbd_from_sdl(emu) dans main.c (#ifdef HAS_SDL2)
+- [x] Lecture SDL_GetKeyboardState + SDL_GetModState
+- [x] Mapping 1:1 SDL_SCANCODE_* ↔ HID usage code (design SDL)
+- [x] Modifier byte (LCtrl/LShift/LAlt/.../RCtrl/RShift/RAlt/...)
+- [x] Boot keyboard 6-key limit respecté
+- [x] Hook après KEYDOWN et KEYUP : mirror complet
+- [x] 5 nouveaux tests bitmap conventions (A/Enter/Up/6-keys/release)
+- [x] 101 tests test-loci, 441 global
+- [x] BOUCLE INTERACTIVE COMPLÈTE : ROM LOCI navigable au clavier
+
 ### Sprint 34aj: LOCI bindings clavier SDL F5/F8 (v1.16.35-alpha) - DONE
 - [x] F8 KEYDOWN → loci_action_button_short (install trap + IRQ)
 - [x] F8 KEYUP → loci_action_button_release (V flag + restore vector)

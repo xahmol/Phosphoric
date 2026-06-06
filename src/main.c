@@ -291,6 +291,48 @@ static bool loci_rom_swap_cb(void* ctx, const char* rom_path, uint16_t base_addr
     return true;
 }
 
+/* Sync the LOCI keyboard report from the current SDL keyboard state.
+ *
+ * SDL_Scancode values map 1:1 to HID Usage IDs from the Keyboard/Keypad
+ * usage page (deliberately, per the SDL docs), so the boot keyboard
+ * report we hand to LOCI just collects the first six scancodes whose
+ * state is "down" and packs the SDL modifier flags into the HID byte.
+ *
+ * Called on every KEYDOWN/KEYUP — cheap (one SDL state read + up to
+ * ~230 iterations bounded by the standard usage page). */
+#ifdef HAS_SDL2
+static void loci_sync_kbd_from_sdl(emulator_t* emu) {
+    if (!emu || !emu->has_loci) return;
+
+    int numkeys = 0;
+    const Uint8* state = SDL_GetKeyboardState(&numkeys);
+    if (!state) return;
+
+    SDL_Keymod m = SDL_GetModState();
+    uint8_t hid_mod = 0;
+    if (m & KMOD_LCTRL)  hid_mod |= 0x01;
+    if (m & KMOD_LSHIFT) hid_mod |= 0x02;
+    if (m & KMOD_LALT)   hid_mod |= 0x04;
+    if (m & KMOD_LGUI)   hid_mod |= 0x08;
+    if (m & KMOD_RCTRL)  hid_mod |= 0x10;
+    if (m & KMOD_RSHIFT) hid_mod |= 0x20;
+    if (m & KMOD_RALT)   hid_mod |= 0x40;
+    if (m & KMOD_RGUI)   hid_mod |= 0x80;
+
+    uint8_t keys[6] = {0};
+    int kn = 0;
+    /* HID modifier keys live at 0xE0+ — skip those, they're already in
+     * hid_mod. Standard usage page tops out around 0xE7; clamp. */
+    int max = numkeys < 0xE0 ? numkeys : 0xE0;
+    for (int sc = SDL_SCANCODE_A; sc < max && kn < 6; sc++) {
+        if (state[sc]) {
+            keys[kn++] = (uint8_t)sc;
+        }
+    }
+    loci_kbd_set_report(&emu->loci, hid_mod, keys);
+}
+#endif
+
 /* LOCI action-button install hook (Sprint 34ai).
  * Saves the current IRQ vector at $FFFE/F, redirects it to the trap at
  * $03BA, then pulses the CPU IRQ line. The trap bytes themselves were
@@ -1248,6 +1290,9 @@ static void emulator_run(emulator_t* emu) {
                     if (!oric_joystick_handle_sdl_event(&emu->joystick, &event)) {
                         oric_keyboard_handle_sdl_event(&emu->keyboard, &event);
                     }
+                    /* Sprint 34ak: mirror SDL keyboard state into the
+                     * LOCI kbd bitmap so the LOCI ROM TUI can navigate. */
+                    loci_sync_kbd_from_sdl(emu);
                     break;
                 case SDL_KEYUP:
                     if (event.key.keysym.sym == SDLK_F8 && emu->has_loci) {
@@ -1260,6 +1305,9 @@ static void emulator_run(emulator_t* emu) {
                     if (!oric_joystick_handle_sdl_event(&emu->joystick, &event)) {
                         oric_keyboard_handle_sdl_event(&emu->keyboard, &event);
                     }
+                    /* Sprint 34ak: sync after KEYUP so released keys
+                     * disappear from the LOCI bitmap. */
+                    loci_sync_kbd_from_sdl(emu);
                     break;
                 case SDL_TEXTINPUT:
                     /* Symbolic mode: character -> ORIC key mapping */

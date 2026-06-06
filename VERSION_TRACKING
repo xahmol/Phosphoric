@@ -1,12 +1,22 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.27-alpha
+Current Version: 1.16.28-alpha
 Release Date: 2026-06-06
-Status: Alpha (LOCI xram + mount/umount — 378 tests pass)
+Status: Alpha (LOCI Dir API + uname — 384 tests pass)
 
 Version History:
 ----------------
+- 1.16.28-alpha (2026-06-06): LOCI Dir API + uname (Sprint 34ac)
+  * 5 ops : OPENDIR/CLOSEDIR/READDIR/MKDIR/UNAME
+  * Table dir_fd 8 slots (offset 32, matches firmware FD_OFFS_LFS)
+  * READDIR push dirent 72 octets sur xstack (d_fd/d_name/d_attrib/reserved/d_size)
+  * UNAME push 5 chaînes fixe (69 octets total)
+  * Filtrage `.`/`..` côté readdir
+  * 6 nouveaux tests test-loci, total 44, 384 tests global
+  * 23/36 ops implémentées (64%)
+  * ROM LOCI reste PC=$C354 (TUI loop attend input)
+
 - 1.16.27-alpha (2026-06-06): LOCI xram DMA + mount/getcwd (Sprint 34ab)
   * xram 64 KB + 2 fenêtres DMA auto-inc ($03A4-A7, $03A8-AB)
   * Ops 0x17 READ_XRAM, 0x19 WRITE_XRAM, 0x88 GETCWD, 0x90 MOUNT, 0x91 UMOUNT

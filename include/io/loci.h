@@ -121,6 +121,19 @@ typedef enum {
 /* xram — 64 KB SRAM exposed to the 6502 through DMA windows. */
 #define LOCI_XRAM_SIZE  0x10000
 
+/* Dir handles (POSIX DIR*) — separate fd space from file fds. */
+#define LOCI_DIR_MAX     8
+#define LOCI_DIR_OFFSET  32   /* matches firmware FD_OFFS_LFS */
+
+/* dirent struct laid out on xstack by readdir (must match firmware exactly).
+ * sizeof = 2 + 64 + 1 + 1 + 4 = 72 bytes. */
+#define LOCI_DIR_NAME_LEN  64
+#define LOCI_DIRENT_SIZE   72
+
+/* FAT-style attribute bits used by readdir.d_attrib. */
+#define LOCI_AM_DIR  0x10
+#define LOCI_AM_SYS  0x04
+
 /* Mount slots — 4 disk drives + 1 tape + 1 ROM. */
 #define LOCI_MNT_MAX    6
 #define LOCI_MNT_TAP    4
@@ -179,6 +192,10 @@ typedef struct loci_s {
      * paths only — actual disk/tape/ROM image plumbing lands in 34ad-34af. */
     bool mnt_mounted[LOCI_MNT_MAX];
     char mnt_paths[LOCI_MNT_MAX][256];
+
+    /* Directory iterators (Sprint 34ac). dirs[i] is a host DIR* exposed
+     * to the 6502 as dir_fd = LOCI_DIR_OFFSET + i. */
+    void* dirs[LOCI_DIR_MAX];
 } loci_t;
 
 bool    loci_init(loci_t* loci);

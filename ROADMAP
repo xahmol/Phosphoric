@@ -539,6 +539,19 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34ac: LOCI Dir API + uname (v1.16.28-alpha) - DONE
+- [x] op 0x80 OPENDIR : opendir host, retourne dir_fd >= 32
+- [x] op 0x81 CLOSEDIR : closedir, libère slot
+- [x] op 0x82 READDIR : push dirent 72 octets (d_fd/d_name/d_attrib/d_size)
+- [x] op 0x83 MKDIR : mkdir mode 0755
+- [x] op 0x98 UNAME : 5 chaînes (sysname/nodename/release/version/machine)
+- [x] Table dir_fd 8 slots (offset 32, matches firmware)
+- [x] Filtrage automatique des entrées `.` et `..`
+- [x] Stat host pour d_attrib (AM_DIR si dossier) et d_size
+- [x] 6 nouveaux tests test-loci, total 44, 384 tests global
+- [x] 23/36 ops implémentées (64%)
+- [x] ROM LOCI reste PC=$C354 (TUI loop, attente input)
+
 ### Sprint 34ab: LOCI xram DMA + mount/umount/getcwd (v1.16.27-alpha) - DONE
 - [x] xram 64 KB tampon partagé loci_t.xram
 - [x] Fenêtre DMA 0 : $03A4 RW0, $03A5 STEP0 (signed), $03A6/A7 ADDR0

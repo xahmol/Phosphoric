@@ -222,7 +222,7 @@ TEST(test_xstack_read_pops_byte) {
 TEST(test_unimplemented_op_still_enosys) {
     loci_t l; loci_init(&l);
     l.enabled = true;
-    loci_write(&l, 0x03AF, LOCI_OP_OPENDIR);   /* not implemented until 34ac */
+    loci_write(&l, 0x03AF, LOCI_OP_TAP_SEEK);   /* not implemented until 34af */
     uint16_t e = l.regs[LOCI_REG_API_ERRNO_LO] |
                  ((uint16_t)l.regs[LOCI_REG_API_ERRNO_HI] << 8);
     ASSERT_EQ(e, LOCI_ENOSYS);
@@ -674,6 +674,123 @@ TEST(test_getcwd_255_derives_rom) {
     ASSERT_EQ(l.regs[LOCI_REG_API_A], 8);
 }
 
+/* ── 34ac: Dir API + uname ───────────────────────────────────── */
+
+TEST(test_opendir_closedir) {
+    char* tmpdir = make_tmpdir();
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_flash_root(&l, tmpdir);
+
+    push_path(&l, ".");
+    loci_write(&l, 0x03AF, LOCI_OP_OPENDIR);
+    int dfd = l.regs[LOCI_REG_API_A];
+    ASSERT_TRUE(dfd >= LOCI_DIR_OFFSET);
+
+    l.regs[LOCI_REG_API_A] = (uint8_t)dfd;
+    loci_write(&l, 0x03AF, LOCI_OP_CLOSEDIR);
+    ASSERT_EQ(l.regs[LOCI_REG_API_A], 0);
+
+    rmdir(tmpdir); loci_cleanup(&l); free(tmpdir);
+}
+
+TEST(test_opendir_missing_enoent) {
+    char* tmpdir = make_tmpdir();
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_flash_root(&l, tmpdir);
+    push_path(&l, "nope_dir");
+    loci_write(&l, 0x03AF, LOCI_OP_OPENDIR);
+    uint16_t e = l.regs[LOCI_REG_API_ERRNO_LO] |
+                 ((uint16_t)l.regs[LOCI_REG_API_ERRNO_HI] << 8);
+    ASSERT_EQ(e, LOCI_ENOENT);
+    rmdir(tmpdir); loci_cleanup(&l); free(tmpdir);
+}
+
+TEST(test_readdir_lists_entries_skipping_dotdot) {
+    char* tmpdir = make_tmpdir();
+    /* Create two files. */
+    char p1[300], p2[300];
+    snprintf(p1, sizeof(p1), "%s/alpha.txt", tmpdir);
+    snprintf(p2, sizeof(p2), "%s/beta.bin", tmpdir);
+    FILE* fp = fopen(p1, "wb"); fwrite("hi", 1, 2, fp); fclose(fp);
+    fp = fopen(p2, "wb"); fwrite("xx", 1, 2, fp); fclose(fp);
+
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_flash_root(&l, tmpdir);
+    push_path(&l, ".");
+    loci_write(&l, 0x03AF, LOCI_OP_OPENDIR);
+    int dfd = l.regs[LOCI_REG_API_A];
+    ASSERT_TRUE(dfd >= LOCI_DIR_OFFSET);
+
+    int seen = 0;
+    bool seen_alpha = false, seen_beta = false;
+    for (int round = 0; round < 4; round++) {
+        l.regs[LOCI_REG_API_A] = (uint8_t)dfd;
+        loci_write(&l, 0x03AF, LOCI_OP_READDIR);
+        /* Dirent at xstack[ptr..ptr+71]. d_name at offset 2. */
+        uint16_t base = l.xstack_ptr;
+        char name[65] = {0};
+        for (int i = 0; i < 64; i++) name[i] = (char)l.xstack[base + 2 + i];
+        if (!name[0]) break;
+        if (strcmp(name, "alpha.txt") == 0) seen_alpha = true;
+        if (strcmp(name, "beta.bin")  == 0) seen_beta  = true;
+        /* Should NOT be "." or "..". */
+        ASSERT_TRUE(strcmp(name, ".") != 0);
+        ASSERT_TRUE(strcmp(name, "..") != 0);
+        seen++;
+    }
+    ASSERT_TRUE(seen_alpha);
+    ASSERT_TRUE(seen_beta);
+    ASSERT_EQ(seen, 2);
+
+    l.regs[LOCI_REG_API_A] = (uint8_t)dfd;
+    loci_write(&l, 0x03AF, LOCI_OP_CLOSEDIR);
+    unlink(p1); unlink(p2); rmdir(tmpdir);
+    loci_cleanup(&l); free(tmpdir);
+}
+
+TEST(test_mkdir_creates_dir) {
+    char* tmpdir = make_tmpdir();
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_flash_root(&l, tmpdir);
+    push_path(&l, "newsub");
+    loci_write(&l, 0x03AF, LOCI_OP_MKDIR);
+    ASSERT_EQ(l.regs[LOCI_REG_API_A], 0);
+
+    char path[300];
+    snprintf(path, sizeof(path), "%s/newsub", tmpdir);
+    struct stat st;
+    ASSERT_EQ(stat(path, &st), 0);
+    ASSERT_TRUE(S_ISDIR(st.st_mode));
+
+    rmdir(path); rmdir(tmpdir); loci_cleanup(&l); free(tmpdir);
+}
+
+TEST(test_closedir_bad_fd_ebadf) {
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    l.regs[LOCI_REG_API_A] = 99;
+    loci_write(&l, 0x03AF, LOCI_OP_CLOSEDIR);
+    uint16_t e = l.regs[LOCI_REG_API_ERRNO_LO] |
+                 ((uint16_t)l.regs[LOCI_REG_API_ERRNO_HI] << 8);
+    ASSERT_EQ(e, LOCI_EBADF);
+}
+
+TEST(test_uname_pushes_5_fields) {
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_write(&l, 0x03AF, LOCI_OP_UNAME);
+    /* Total bytes pushed = 17 + 9 + 9 + 9 + 25 = 69 */
+    ASSERT_EQ(LOCI_XSTACK_SIZE - l.xstack_ptr, 69);
+    /* Top of xstack should hold sysname starting with "Phosphoric". */
+    char buf[18] = {0};
+    memcpy(buf, &l.xstack[l.xstack_ptr], 17);
+    ASSERT_TRUE(strncmp(buf, "Phosphoric LOCI", 15) == 0);
+}
+
 /* ── reset ──────────────────────────────────────────────────── */
 
 TEST(test_reset_clears_state) {
@@ -732,6 +849,12 @@ int main(void) {
     RUN(test_read_xram_from_file);
     RUN(test_getcwd_returns_path);
     RUN(test_getcwd_255_derives_rom);
+    RUN(test_opendir_closedir);
+    RUN(test_opendir_missing_enoent);
+    RUN(test_readdir_lists_entries_skipping_dotdot);
+    RUN(test_mkdir_creates_dir);
+    RUN(test_closedir_bad_fd_ebadf);
+    RUN(test_uname_pushes_5_fields);
     RUN(test_reset_clears_state);
 
     printf("\n===========================================================\n");

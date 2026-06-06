@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.28-alpha] - 2026-06-06
+
+### LOCI : Dir API + uname (Sprint 34ac)
+
+#### Added
+- **5 nouvelles ops API** :
+  - `0x80 OPENDIR` : ouvre un dossier host (sandbox flash_root),
+    retourne dir_fd ≥ 32
+  - `0x81 CLOSEDIR` : ferme un dir_fd
+  - `0x82 READDIR` : push une struct `dirent` (72 octets) sur xstack
+    avec champs `d_fd` (int16), `d_name` (64 octets), `d_attrib`
+    (FAT-style AM_DIR si dossier), reserved, `d_size` (uint32)
+  - `0x83 MKDIR` : crée un dossier (mode 0755)
+  - `0x98 UNAME` : push 5 chaînes de taille fixe sur xstack
+    (sysname/nodename/release/version/machine)
+- **Table dir handles 8 slots** (LOCI_DIR_OFFSET = 32, matches firmware
+  FD_OFFS_LFS).
+- **Filtrage `.`/`..` côté readdir** (firmware fait pareil).
+- **Constants header** : `LOCI_DIR_MAX`, `LOCI_DIR_OFFSET`, `LOCI_DIR_NAME_LEN`,
+  `LOCI_DIRENT_SIZE`, `LOCI_AM_DIR`, `LOCI_AM_SYS`.
+- **6 nouveaux tests test-loci** (total 44) : opendir+closedir round-trip,
+  opendir missing → ENOENT, readdir liste les entrées en sautant `.` et `..`,
+  mkdir crée le dossier, closedir bad fd → EBADF, uname push 69 octets.
+
+#### Validation
+ROM LOCI v0.3.0 reste à `PC=$C354` (boucle TUI en attente d'input).
+Les ops Dir API sont prêtes à servir dès que le TUI navigue un listing
+(nécessite USB HID — sprint 34ag — pour qu'un appui clavier déclenche
+la navigation).
+
 ## [1.16.27-alpha] - 2026-06-06
 
 ### LOCI : xram DMA window + READ/WRITE_XRAM + mount/umount/getcwd (Sprint 34ab)

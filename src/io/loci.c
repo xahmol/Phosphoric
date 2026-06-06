@@ -38,6 +38,8 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <errno.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 /* ─── name lookup for diagnostics ───────────────────────────────── */
 
@@ -117,6 +119,13 @@ void loci_cleanup(loci_t* loci) {
         if (loci->fds[i]) {
             fclose((FILE*)loci->fds[i]);
             loci->fds[i] = NULL;
+        }
+    }
+    /* Close any still-open dirs (Sprint 34ac). */
+    for (int i = 0; i < LOCI_DIR_MAX; i++) {
+        if (loci->dirs[i]) {
+            closedir((DIR*)loci->dirs[i]);
+            loci->dirs[i] = NULL;
         }
     }
 }
@@ -737,6 +746,159 @@ static void op_rename(loci_t* loci) {
     api_return_ax(loci, 0);
 }
 
+/* ─── Dir API + uname (Sprint 34ac) ───────────────────────────── */
+
+static int alloc_dir(loci_t* loci) {
+    for (int i = 0; i < LOCI_DIR_MAX; i++) {
+        if (loci->dirs[i] == NULL) return i;
+    }
+    return -1;
+}
+
+static DIR* dir_fd_to_handle(loci_t* loci, int fd) {
+    int idx = fd - LOCI_DIR_OFFSET;
+    if (idx < 0 || idx >= LOCI_DIR_MAX) return NULL;
+    return (DIR*)loci->dirs[idx];
+}
+
+/* 0x80 OPENDIR: xstack=path. Returns dir_fd >= LOCI_DIR_OFFSET. */
+static void op_opendir(loci_t* loci) {
+    char path[260];
+    if (!pop_zstring(loci, path, sizeof(path))) {
+        api_return_errno(loci, LOCI_EINVAL);
+        return;
+    }
+    char host_path[512];
+    if (!resolve_path(loci, path, host_path, sizeof(host_path))) {
+        api_return_errno(loci, LOCI_EACCES);
+        return;
+    }
+    DIR* d = opendir(host_path);
+    if (!d) {
+        api_return_errno(loci, map_errno(errno));
+        return;
+    }
+    int slot = alloc_dir(loci);
+    if (slot < 0) {
+        closedir(d);
+        api_return_errno(loci, LOCI_EMFILE);
+        return;
+    }
+    loci->dirs[slot] = d;
+    api_return_ax(loci, (uint16_t)(slot + LOCI_DIR_OFFSET));
+}
+
+/* 0x81 CLOSEDIR: A=dir_fd. */
+static void op_closedir(loci_t* loci) {
+    int fd = loci->regs[LOCI_REG_API_A];
+    DIR* d = dir_fd_to_handle(loci, fd);
+    if (!d) {
+        api_return_errno(loci, LOCI_EBADF);
+        return;
+    }
+    closedir(d);
+    loci->dirs[fd - LOCI_DIR_OFFSET] = NULL;
+    api_return_ax(loci, 0);
+}
+
+/* 0x82 READDIR: A=dir_fd. Pushes a dirent struct (72 bytes) onto xstack.
+ * Skips "." and "..". On end-of-dir, returns empty name. */
+static void op_readdir(loci_t* loci) {
+    int fd = loci->regs[LOCI_REG_API_A];
+    DIR* d = dir_fd_to_handle(loci, fd);
+    if (!d) {
+        api_return_errno(loci, LOCI_EBADF);
+        return;
+    }
+
+    struct dirent* de = NULL;
+    while ((de = readdir(d)) != NULL) {
+        if (strcmp(de->d_name, ".")  == 0) continue;
+        if (strcmp(de->d_name, "..") == 0) continue;
+        break;
+    }
+
+    /* Build dirent payload (72 bytes) directly in the xstack tail. */
+    uint8_t dirent_buf[LOCI_DIRENT_SIZE] = {0};
+    /* d_fd: int16 at offset 0 */
+    dirent_buf[0] = (uint8_t)(fd & 0xFF);
+    dirent_buf[1] = (uint8_t)((fd >> 8) & 0xFF);
+
+    if (de) {
+        /* d_name: 64 bytes at offset 2 */
+        size_t nl = strlen(de->d_name);
+        if (nl > LOCI_DIR_NAME_LEN - 1) nl = LOCI_DIR_NAME_LEN - 1;
+        memcpy(&dirent_buf[2], de->d_name, nl);
+        dirent_buf[2 + nl] = '\0';
+
+        /* d_attrib: at offset 66. Check via stat. */
+        uint8_t attrib = 0;
+        struct stat st;
+        char fullpath[768];
+        const char* base = loci->flash_root[0] ? loci->flash_root : ".";
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", base, de->d_name);
+        if (stat(fullpath, &st) == 0 && S_ISDIR(st.st_mode)) {
+            attrib = LOCI_AM_DIR;
+        }
+        dirent_buf[66] = attrib;
+        dirent_buf[67] = 0;   /* reserved */
+
+        /* d_size: uint32 at offset 68 */
+        uint32_t sz = 0;
+        if (stat(fullpath, &st) == 0) sz = (uint32_t)st.st_size;
+        memcpy(&dirent_buf[68], &sz, 4);
+    }
+    /* (else: d_name stays empty, d_size = 0 — signals end-of-dir to caller.) */
+
+    xstack_zero(loci);
+    /* Push the 72 bytes so they fill xstack[XSTACK_SIZE - 72 .. XSTACK_SIZE - 1]. */
+    loci->xstack_ptr = (uint16_t)(LOCI_XSTACK_SIZE - LOCI_DIRENT_SIZE);
+    memcpy(&loci->xstack[loci->xstack_ptr], dirent_buf, LOCI_DIRENT_SIZE);
+    xstack_sync(loci);
+    api_return_ax(loci, 0);
+}
+
+/* 0x83 MKDIR: xstack=path. */
+static void op_mkdir(loci_t* loci) {
+    char path[260];
+    if (!pop_zstring(loci, path, sizeof(path))) {
+        api_return_errno(loci, LOCI_EINVAL);
+        return;
+    }
+    char host_path[512];
+    if (!resolve_path(loci, path, host_path, sizeof(host_path))) {
+        api_return_errno(loci, LOCI_EACCES);
+        return;
+    }
+    if (mkdir(host_path, 0755) != 0) {
+        api_return_errno(loci, map_errno(errno));
+        return;
+    }
+    api_return_ax(loci, 0);
+}
+
+/* 0x98 UNAME: pushes 5 fixed-size strings onto xstack (in firmware push
+ * order: machine, version, release, nodename, sysname — sysname on top).
+ * Returns the final xstack_ptr in A. */
+static void op_uname(loci_t* loci) {
+    static const char machine[25]  = "Phosphoric Emulator     ";
+    static const char version[9]   = "0.1     ";   /* build version */
+    static const char release[9]   = "1.16.27 ";
+    static const char nodename[9]  = "oric    ";
+    static const char sysname[17]  = "Phosphoric LOCI ";
+
+    xstack_zero(loci);
+    if (!xstack_push_n(loci, machine,  sizeof(machine))  ||
+        !xstack_push_n(loci, version,  sizeof(version))  ||
+        !xstack_push_n(loci, release,  sizeof(release))  ||
+        !xstack_push_n(loci, nodename, sizeof(nodename)) ||
+        !xstack_push_n(loci, sysname,  sizeof(sysname))) {
+        api_return_errno(loci, LOCI_EINVAL);
+        return;
+    }
+    api_return_ax(loci, loci->xstack_ptr);
+}
+
 /* ─── dispatch ─────────────────────────────────────────────────── */
 
 static void dispatch_op(loci_t* loci, uint8_t op) {
@@ -761,6 +923,11 @@ static void dispatch_op(loci_t* loci, uint8_t op) {
         case LOCI_OP_MOUNT:       op_mount(loci);        break;
         case LOCI_OP_UMOUNT:      op_umount(loci);       break;
         case LOCI_OP_GETCWD:      op_getcwd(loci);       break;
+        case LOCI_OP_OPENDIR:     op_opendir(loci);      break;
+        case LOCI_OP_CLOSEDIR:    op_closedir(loci);     break;
+        case LOCI_OP_READDIR:     op_readdir(loci);      break;
+        case LOCI_OP_MKDIR:       op_mkdir(loci);        break;
+        case LOCI_OP_UNAME:       op_uname(loci);        break;
         default:
             log_debug("LOCI op $%02X (%s) — stubbed, returns ENOSYS",
                       op, op_name(op));

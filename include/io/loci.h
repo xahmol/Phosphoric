@@ -134,6 +134,15 @@ typedef enum {
 #define LOCI_AM_DIR  0x10
 #define LOCI_AM_SYS  0x04
 
+/* MIA_BOOT (op 0xA0) bit flags — matches firmware sys/mia.h. */
+#define LOCI_BOOT_FDC      0x01   /* Mount Microdisc device ROM at $A000 */
+#define LOCI_BOOT_TAP      0x02   /* Load tape image */
+#define LOCI_BOOT_B11      0x04   /* Use BASIC 1.1 (Atmos) instead of 1.0 */
+#define LOCI_BOOT_TAP_BIT  0x08   /* TAP bit-level loading */
+#define LOCI_BOOT_TAP_ALD  0x10   /* Tape autoload */
+#define LOCI_BOOT_RESUME   0x40   /* Resume current ROM instead of swap */
+#define LOCI_BOOT_FAST     0x80   /* Fast boot (skip leader) */
+
 /* Mount slots — 4 disk drives + 1 tape + 1 ROM. */
 #define LOCI_MNT_MAX    6
 #define LOCI_MNT_TAP    4
@@ -204,6 +213,21 @@ typedef struct loci_s {
     uint16_t kbd_xram;
     uint16_t mou_xram;
     uint16_t pad_xram;
+
+    /* MIA_BOOT settings latched on last 0xA0 call (Sprint 34ad). */
+    uint8_t boot_settings;
+
+    /* ROM-swap callback (Sprint 34ad).
+     * Set by the emulator via loci_set_rom_swap_callback(). Invoked by
+     * op 0xA0 MIA_BOOT to load the requested ROM image into Oric memory
+     * and reset the CPU. Returns true on success.
+     *
+     * Args: ctx is the registered opaque (typically emulator_t*),
+     *       rom_path is a host-resolved path (already sandboxed),
+     *       base_addr is the Oric memory address to load at ($C000
+     *       for BASIC, $A000 for Microdisc). */
+    bool (*rom_swap_cb)(void* ctx, const char* rom_path, uint16_t base_addr);
+    void* rom_swap_ctx;
 } loci_t;
 
 bool    loci_init(loci_t* loci);
@@ -224,6 +248,12 @@ void    loci_kbd_set_report(loci_t* loci, uint8_t modifier,
 
 /* Clear the keyboard bitmap (all keys released). */
 void    loci_kbd_clear(loci_t* loci);
+
+/* Register the ROM-swap callback used by op 0xA0 MIA_BOOT. */
+void    loci_set_rom_swap_callback(
+            loci_t* loci,
+            bool (*cb)(void* ctx, const char* rom_path, uint16_t base_addr),
+            void* ctx);
 
 /* Bus interface — called from the memory I/O callback when an address
  * lies inside the MIA window. Out-of-range addresses must be filtered

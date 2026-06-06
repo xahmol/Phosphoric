@@ -1,12 +1,25 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.29-alpha
+Current Version: 1.16.30-alpha
 Release Date: 2026-06-06
-Status: Alpha (LOCI USB HID stubs — 394 tests pass)
+Status: Alpha (LOCI ROM swap runtime — 402 tests pass)
 
 Version History:
 ----------------
+- 1.16.30-alpha (2026-06-06): LOCI ROM swap runtime MIA_BOOT (Sprint 34ad)
+  * Op 0xA0 MIA_BOOT implémenté avec settings flags
+  * Callback ROM-swap : loci_set_rom_swap_callback(cb, ctx)
+  * Constants LOCI_BOOT_* (FDC/TAP/B11/TAP_BIT/TAP_ALD/RESUME/FAST)
+  * Résolution path : slot ROM monté > B11 → basic11b > basic10
+  * Sandbox via flash_root, EACCES si path-traversal
+  * Côté main.c : memory_load_rom + cpu_reset
+  * Support uniquement base_addr=$C000 en 34ad (BASIC)
+  * Microdisc $A000 ack mais delegated à --disk-rom existant
+  * boot_settings latched pour introspection
+  * 8 nouveaux tests test-loci, total 62, 402 tests global
+  * 24/36 ops implémentées (67%)
+
 - 1.16.29-alpha (2026-06-06): LOCI USB HID stubs kbd/mou/pad (Sprint 34ag)
   * PIX_XREG décodé : device/channel/addr/word depuis xstack
   * Route channel*256+addr : 0=kbd, 1=mou, 2=pad (set xram address)

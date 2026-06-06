@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.30-alpha] - 2026-06-06
+
+### LOCI : ROM swap runtime (op 0xA0 MIA_BOOT) — Sprint 34ad
+
+#### Added
+- **`0xA0 MIA_BOOT` implémenté** : `A` = settings flags. Déclenche
+  un swap de ROM et un reset CPU via callback enregistré.
+- **Constants `LOCI_BOOT_*`** dans `loci.h` :
+  - `0x01 FDC`     : load Microdisc ROM en plus à $A000
+  - `0x02 TAP`     : load tape image (gestion sprint 34af)
+  - `0x04 B11`     : utiliser BASIC 1.1 (Atmos) au lieu de 1.0
+  - `0x08 TAP_BIT` : TAP bit-level loading
+  - `0x10 TAP_ALD` : autoload TAP
+  - `0x40 RESUME`  : garde la ROM courante, juste ack
+  - `0x80 FAST`    : skip leader (boot rapide)
+- **Mécanisme callback** : `loci_set_rom_swap_callback(loci, cb, ctx)`.
+  Le callback charge la ROM dans la mémoire Oric à `base_addr` et
+  reset le CPU pour que le nouveau reset vector soit lu.
+- **Résolution path** :
+  - Si slot 5 (LOCI_MNT_ROM) monté : utilise ce path
+  - Sinon si B11 : `basic11b.rom`
+  - Sinon : `basic10.rom`
+  - Tous sandboxés via `flash_root`
+- **Côté `main.c`** : callback `loci_rom_swap_cb` qui appelle
+  `memory_load_rom()` et `cpu_reset()`. Câblé automatiquement avec
+  `--loci`. Pour Sprint 34ad, supporte uniquement `base_addr=$C000`
+  (BASIC ROM). `$A000` (Microdisc overlay) renvoie true sans rien
+  faire — le path `--disk-rom` existant reste la voie pour Microdisc.
+- **Boot settings latched** dans `loci_t.boot_settings` pour
+  introspection (e.g. test FDC bit en mode RESUME).
+- **8 nouveaux tests test-loci** (total 62) : RESUME ne call pas le
+  callback, default → basic10, B11 → basic11b, slot ROM monté wins,
+  callback failure → EIO, no callback → ack OK, settings latched,
+  FDC bit → 2nd callback à $A000.
+
+#### Validation
+ROM LOCI reste PC=$C354 (TUI loop) — pas de boot demandé par la ROM
+elle-même tant qu'aucun input clavier n'est injecté. Le ROM swap est
+testable via `--debug` en posant un breakpoint sur l'op A0 et en
+fournissant `loci-flash` qui contient `basic10.rom`/`basic11b.rom`.
+
 ## [1.16.29-alpha] - 2026-06-06
 
 ### LOCI : USB HID stubs (clavier/souris/manette) — Sprint 34ag

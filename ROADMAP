@@ -539,6 +539,22 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34ad: LOCI ROM swap runtime MIA_BOOT (v1.16.30-alpha) - DONE
+- [x] Op 0xA0 MIA_BOOT décodé : A=settings, dispatcher
+- [x] Constants LOCI_BOOT_FDC/TAP/B11/TAP_BIT/TAP_ALD/RESUME/FAST
+- [x] Mécanisme callback : loci_set_rom_swap_callback(cb, ctx)
+- [x] Résolution path : slot ROM monté > B11 → basic11b.rom > basic10.rom
+- [x] Sandbox via flash_root resolver
+- [x] Côté main.c : loci_rom_swap_cb avec memory_load_rom + cpu_reset
+- [x] Support base_addr=$C000 uniquement en 34ad (BASIC)
+- [x] base_addr=$A000 ack mais log "delegated to --disk-rom"
+- [x] RESUME bit → ack sans callback
+- [x] No callback → ack OK (test mode)
+- [x] Callback failure → EIO
+- [x] boot_settings latched pour introspection
+- [x] 8 nouveaux tests test-loci, total 62, 402 tests global
+- [x] 24/36 ops implémentées (67%)
+
 ### Sprint 34ag: LOCI USB HID stubs kbd/mou/pad (v1.16.29-alpha) - DONE
 - [x] PIX_XREG (0x01) décodé : device/channel/addr/word depuis xstack
 - [x] Route channel*256+addr : 0=kbd, 1=mou, 2=pad

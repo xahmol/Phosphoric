@@ -144,6 +144,14 @@ void loci_set_flash_root(loci_t* loci, const char* path) {
     }
 }
 
+void loci_set_rom_swap_callback(loci_t* loci,
+        bool (*cb)(void*, const char*, uint16_t),
+        void* ctx) {
+    if (!loci) return;
+    loci->rom_swap_cb = cb;
+    loci->rom_swap_ctx = ctx;
+}
+
 /* ─── errno / BUSY / xstack helpers ────────────────────────────── */
 
 static void set_errno(loci_t* loci, uint16_t e) {
@@ -986,6 +994,65 @@ static void op_uname(loci_t* loci) {
     api_return_ax(loci, loci->xstack_ptr);
 }
 
+/* ─── MIA_BOOT — runtime ROM swap (Sprint 34ad) ──────────────── */
+
+/* Resolve the BASIC ROM filename used by MIA_BOOT, given the settings:
+ *   - if a ROM is mounted on slot 5 (LOCI_MNT_ROM): use that path verbatim
+ *   - else if B11 bit set: "basic11b.rom"
+ *   - else                : "basic10.rom"
+ * The returned path goes through the sandbox resolver before host I/O. */
+static const char* derive_basic_rom_path(loci_t* loci, uint8_t settings) {
+    if (loci->mnt_mounted[LOCI_MNT_ROM]) {
+        return loci->mnt_paths[LOCI_MNT_ROM];
+    }
+    return (settings & LOCI_BOOT_B11) ? "basic11b.rom" : "basic10.rom";
+}
+
+/* 0xA0 MIA_BOOT: A=settings flags. Triggers a ROM swap+CPU reset via
+ * the registered callback. */
+static void op_mia_boot(loci_t* loci) {
+    uint8_t settings = loci->regs[LOCI_REG_API_A];
+    loci->boot_settings = settings;
+
+    /* RESUME: caller just wants to keep running with the current ROM. */
+    if (settings & LOCI_BOOT_RESUME) {
+        api_return_ax(loci, 0);
+        return;
+    }
+
+    /* No callback wired = nothing we can do but acknowledge.
+     * (Phosphoric in headless test mode hits this path.) */
+    if (!loci->rom_swap_cb) {
+        api_return_ax(loci, 0);
+        return;
+    }
+
+    /* Resolve BASIC ROM path against the sandbox. */
+    const char* guest_rom = derive_basic_rom_path(loci, settings);
+    char host_rom[512];
+    if (!resolve_path(loci, guest_rom, host_rom, sizeof(host_rom))) {
+        api_return_errno(loci, LOCI_EACCES);
+        return;
+    }
+
+    if (!loci->rom_swap_cb(loci->rom_swap_ctx, host_rom, 0xC000)) {
+        api_return_errno(loci, LOCI_EIO);
+        return;
+    }
+
+    /* FDC bit: also load Microdisc device ROM at $A000. Best-effort —
+     * absence is not fatal (some setups boot without disk). */
+    if (settings & LOCI_BOOT_FDC) {
+        const char* disc_path = "microdis.rom";
+        char host_disc[512];
+        if (resolve_path(loci, disc_path, host_disc, sizeof(host_disc))) {
+            loci->rom_swap_cb(loci->rom_swap_ctx, host_disc, 0xA000);
+        }
+    }
+
+    api_return_ax(loci, 0);
+}
+
 /* ─── dispatch ─────────────────────────────────────────────────── */
 
 static void dispatch_op(loci_t* loci, uint8_t op) {
@@ -1015,6 +1082,7 @@ static void dispatch_op(loci_t* loci, uint8_t op) {
         case LOCI_OP_READDIR:     op_readdir(loci);      break;
         case LOCI_OP_MKDIR:       op_mkdir(loci);        break;
         case LOCI_OP_UNAME:       op_uname(loci);        break;
+        case LOCI_OP_MIA_BOOT:    op_mia_boot(loci);     break;
         default:
             log_debug("LOCI op $%02X (%s) — stubbed, returns ENOSYS",
                       op, op_name(op));

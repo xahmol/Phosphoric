@@ -99,13 +99,13 @@ TEST(test_out_of_range_read_ff) {
 TEST(test_api_op_dispatches_and_sets_enosys) {
     loci_t l; loci_init(&l);
     l.enabled = true;
-    /* Use an op with no implementation yet (MIA_BOOT in Sprint 34aa). */
-    loci_write(&l, 0x03AF, LOCI_OP_MIA_BOOT);
+    /* Use an op with no implementation yet (OEM_CODEPAGE — never queued). */
+    loci_write(&l, 0x03AF, LOCI_OP_OEM_CODEPAGE);
     uint16_t e = l.regs[LOCI_REG_API_ERRNO_LO] |
                  ((uint16_t)l.regs[LOCI_REG_API_ERRNO_HI] << 8);
     ASSERT_EQ(e, LOCI_ENOSYS);
     ASSERT_TRUE((l.regs[LOCI_REG_BUSY] & 0x80) == 0);
-    ASSERT_EQ(l.op_count[LOCI_OP_MIA_BOOT], 1);
+    ASSERT_EQ(l.op_count[LOCI_OP_OEM_CODEPAGE], 1);
 }
 
 TEST(test_api_op_none_does_not_dispatch) {
@@ -923,6 +923,121 @@ TEST(test_kbd_set_report_noop_when_xram_unset) {
         ASSERT_EQ(l.xram[i], (uint8_t)(0xAA + i));
 }
 
+/* ── 34ad: MIA_BOOT + ROM swap callback ──────────────────────── */
+
+/* Capturing callback for tests. */
+typedef struct {
+    int  call_count;
+    char last_path[256];
+    uint16_t last_base;
+    bool result;
+} rom_swap_capture_t;
+
+static bool capture_swap(void* ctx, const char* rom_path, uint16_t base_addr) {
+    rom_swap_capture_t* c = (rom_swap_capture_t*)ctx;
+    c->call_count++;
+    strncpy(c->last_path, rom_path, sizeof(c->last_path) - 1);
+    c->last_path[sizeof(c->last_path) - 1] = '\0';
+    c->last_base = base_addr;
+    return c->result;
+}
+
+TEST(test_mia_boot_resume_no_callback_invocation) {
+    rom_swap_capture_t cap = { .result = true };
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_rom_swap_callback(&l, capture_swap, &cap);
+    l.regs[LOCI_REG_API_A] = LOCI_BOOT_RESUME;
+    loci_write(&l, 0x03AF, LOCI_OP_MIA_BOOT);
+    ASSERT_EQ(cap.call_count, 0);
+    ASSERT_EQ(l.regs[LOCI_REG_API_A], 0);
+}
+
+TEST(test_mia_boot_basic10_default) {
+    rom_swap_capture_t cap = { .result = true };
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_rom_swap_callback(&l, capture_swap, &cap);
+    loci_set_flash_root(&l, "/tmp/foo");
+    l.regs[LOCI_REG_API_A] = 0;   /* no B11, no RESUME */
+    loci_write(&l, 0x03AF, LOCI_OP_MIA_BOOT);
+    ASSERT_EQ(cap.call_count, 1);
+    ASSERT_EQ(cap.last_base, 0xC000);
+    /* Path should be "/tmp/foo/basic10.rom" (sandbox-resolved). */
+    ASSERT_TRUE(strstr(cap.last_path, "basic10.rom") != NULL);
+}
+
+TEST(test_mia_boot_b11_basic11b) {
+    rom_swap_capture_t cap = { .result = true };
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_rom_swap_callback(&l, capture_swap, &cap);
+    l.regs[LOCI_REG_API_A] = LOCI_BOOT_B11;
+    loci_write(&l, 0x03AF, LOCI_OP_MIA_BOOT);
+    ASSERT_TRUE(strstr(cap.last_path, "basic11b.rom") != NULL);
+}
+
+TEST(test_mia_boot_uses_mounted_rom_slot) {
+    rom_swap_capture_t cap = { .result = true };
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_rom_swap_callback(&l, capture_swap, &cap);
+    /* Pre-mount a custom ROM on slot 5. */
+    l.mnt_mounted[LOCI_MNT_ROM] = true;
+    strcpy(l.mnt_paths[LOCI_MNT_ROM], "custom.rom");
+    l.regs[LOCI_REG_API_A] = LOCI_BOOT_B11;   /* should be ignored */
+    loci_write(&l, 0x03AF, LOCI_OP_MIA_BOOT);
+    ASSERT_TRUE(strstr(cap.last_path, "custom.rom") != NULL);
+    ASSERT_TRUE(strstr(cap.last_path, "basic") == NULL);
+}
+
+TEST(test_mia_boot_callback_failure_returns_eio) {
+    rom_swap_capture_t cap = { .result = false };
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_rom_swap_callback(&l, capture_swap, &cap);
+    l.regs[LOCI_REG_API_A] = 0;
+    loci_write(&l, 0x03AF, LOCI_OP_MIA_BOOT);
+    uint16_t e = l.regs[LOCI_REG_API_ERRNO_LO] |
+                 ((uint16_t)l.regs[LOCI_REG_API_ERRNO_HI] << 8);
+    ASSERT_EQ(e, LOCI_EIO);
+}
+
+TEST(test_mia_boot_no_callback_acks) {
+    /* No callback registered → op returns ax=0 without crashing. */
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    l.regs[LOCI_REG_API_A] = 0;
+    loci_write(&l, 0x03AF, LOCI_OP_MIA_BOOT);
+    ASSERT_EQ(l.regs[LOCI_REG_API_A], 0);
+    uint16_t e = l.regs[LOCI_REG_API_ERRNO_LO] |
+                 ((uint16_t)l.regs[LOCI_REG_API_ERRNO_HI] << 8);
+    ASSERT_EQ(e, 0);
+}
+
+TEST(test_mia_boot_settings_latched) {
+    rom_swap_capture_t cap = { .result = true };
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_rom_swap_callback(&l, capture_swap, &cap);
+    l.regs[LOCI_REG_API_A] = LOCI_BOOT_B11 | LOCI_BOOT_FAST;
+    loci_write(&l, 0x03AF, LOCI_OP_MIA_BOOT);
+    ASSERT_EQ(l.boot_settings, LOCI_BOOT_B11 | LOCI_BOOT_FAST);
+}
+
+TEST(test_mia_boot_fdc_loads_microdisc_too) {
+    rom_swap_capture_t cap = { .result = true };
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_rom_swap_callback(&l, capture_swap, &cap);
+    l.regs[LOCI_REG_API_A] = LOCI_BOOT_FDC;
+    loci_write(&l, 0x03AF, LOCI_OP_MIA_BOOT);
+    /* Two callbacks: one for $C000 (BASIC), one for $A000 (Microdisc). */
+    ASSERT_EQ(cap.call_count, 2);
+    ASSERT_EQ(cap.last_base, 0xA000);
+    ASSERT_TRUE(strstr(cap.last_path, "microdis") != NULL);
+}
+
 /* ── reset ──────────────────────────────────────────────────── */
 
 TEST(test_reset_clears_state) {
@@ -997,6 +1112,14 @@ int main(void) {
     RUN(test_kbd_set_report_no_key_sentinel);
     RUN(test_kbd_clear_resets_bitmap);
     RUN(test_kbd_set_report_noop_when_xram_unset);
+    RUN(test_mia_boot_resume_no_callback_invocation);
+    RUN(test_mia_boot_basic10_default);
+    RUN(test_mia_boot_b11_basic11b);
+    RUN(test_mia_boot_uses_mounted_rom_slot);
+    RUN(test_mia_boot_callback_failure_returns_eio);
+    RUN(test_mia_boot_no_callback_acks);
+    RUN(test_mia_boot_settings_latched);
+    RUN(test_mia_boot_fdc_loads_microdisc_too);
     RUN(test_reset_clears_state);
 
     printf("\n===========================================================\n");

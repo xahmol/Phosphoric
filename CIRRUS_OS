@@ -2,8 +2,8 @@ CIRRUS_OS - Phosphoric Build & Development Status
 ======================================================
 
 Project: Phosphoric — ORIC-1/Atmos Cycle-Accurate Emulator
-Version: 1.16.29-alpha
-Build Status: ALPHA (LOCI USB HID stubs kbd/mou/pad)
+Version: 1.16.30-alpha
+Build Status: ALPHA (LOCI ROM swap runtime MIA_BOOT)
 Last Updated: 2026-06-06
 
 ================================================================

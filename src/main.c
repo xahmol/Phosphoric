@@ -267,6 +267,29 @@ static void print_usage(const char* program_name) {
 
 /* emulator_t is defined in include/emulator.h */
 
+/* LOCI ROM-swap callback (Sprint 34ad).
+ * Loads a ROM image into Oric memory at base_addr and resets the CPU
+ * so the new reset vector is honoured. Only base_addr = $C000 is wired
+ * for now (BASIC ROM swap); $A000 (Microdisc overlay) returns true
+ * without actually swapping — handled by the existing --disk-rom path. */
+static bool loci_rom_swap_cb(void* ctx, const char* rom_path, uint16_t base_addr) {
+    emulator_t* emu = (emulator_t*)ctx;
+    if (!emu || !rom_path || !*rom_path) return false;
+    if (base_addr != 0xC000) {
+        log_info("LOCI ROM swap: ignored base $%04X (only $C000 supported in 34ad)",
+                 base_addr);
+        return true;
+    }
+    log_info("LOCI ROM swap: loading %s at $C000", rom_path);
+    if (!memory_load_rom(&emu->memory, rom_path, 0)) {
+        log_error("LOCI ROM swap: failed to load %s", rom_path);
+        return false;
+    }
+    /* Reset the 6502 so it re-reads the new $FFFC reset vector. */
+    cpu_reset(&emu->cpu);
+    return true;
+}
+
 /* I/O callback: route VIA and Microdisc register access */
 static uint8_t io_read_callback(uint16_t address, void* userdata) {
     emulator_t* emu = (emulator_t*)userdata;
@@ -1669,6 +1692,8 @@ int main(int argc, char* argv[]) {
         loci_init(&emu.loci);
         emu.loci.enabled = true;
         emu.has_loci = true;
+        /* ROM-swap callback used by op 0xA0 MIA_BOOT (Sprint 34ad). */
+        loci_set_rom_swap_callback(&emu.loci, loci_rom_swap_cb, &emu);
         if (loci_flash_root) {
             loci_set_flash_root(&emu.loci, loci_flash_root);
             log_info("LOCI MIA enabled at $%04X-$%04X (flash root: %s)",

@@ -539,6 +539,18 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34aq: Fix CSAVE TAP format byte-compatible (v1.16.43-alpha) - DONE
+- [x] Diagnostic : hexdump TAP CSAVE vs AIGLE.TAP révèle off-by-one
+- [x] Putbyte capture désactivée (byte-stream ROM non fiable)
+- [x] Reconstruction TAP depuis RAM au csave_end :
+  - [x] TXTTAB/VARTAB → start_addr / end_addr
+  - [x] Lecture program data depuis RAM[start..end]
+  - [x] Header layout canonique 2-padding (offset 4-5) + type + auto
+  - [x] Filename sanitization stricte [A-Z0-9_-.] max 11
+- [x] Round-trip CSAVE → NEW → CLOAD → LIST validé via --type-keys
+- [x] 29 bytes TAP consommés par readbyte, PC=$C5E8 final BASIC OK
+- [x] 470 tests pass, aucune régression
+
 ### Sprint 34ap: LOCI SDIMG write support FAT16/32 (v1.16.42-alpha) - DONE
 - [x] API write : fopen_ex, fwrite, unlink, rename, mkdir, sync
 - [x] write_sector avec EROFS si image RO hôte

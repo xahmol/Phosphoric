@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.43-alpha] - 2026-06-07
+
+### CSAVE : fix format TAP byte-compatible — Sprint 34aq
+
+#### Fixed
+- **CLOAD ne pouvait pas relire un CSAVE Phosphoric** : le patch
+  CSAVE capturait les bytes via `putbyte_entry` mais le résultat
+  byte-stream produit par la ROM BASIC n'était pas un TAP Oric
+  canonique (header layout dépendant d'un comportement ROM
+  non-documenté — bytes 0xFF aux mauvaises positions, ordre des
+  champs incorrect).
+- **Nom de fichier host parasitique** : le patch lisait directement
+  `$0035` qui contient le nom encadré de guillemets et précédé d'un
+  length byte. Résultat : fichier nommé `<NUL>"TEST".tap` au lieu de
+  `TEST.tap`. Désormais sanitization stricte [A-Z0-9_-.] ≤ 11 chars.
+
+#### Changed
+- `putbyte_entry` ne capture plus les bytes (juste compte les appels).
+- Reconstruction canonique du TAP au `csave_end` depuis la RAM BASIC :
+  - TXTTAB ($9A/$9B) → start_addr
+  - VARTAB ($9C/$9D) → end_addr + 1
+  - Lecture de RAM[start..end] pour le program data
+  - Nom filtré depuis $0035
+  - Header au format Oric standard :
+    `16 16 16 24 00 00 00 C7 end_hi end_lo start_hi start_lo 00 <name> 00 <data>`
+  - 2 bytes de padding (offsets 4-5) + type=00 à offset 6 + auto=C7
+    à offset 7 — match AIGLE.TAP byte-pour-byte.
+
+#### Validation
+- Round-trip CSAVE → NEW → CLOAD → LIST validé automatiquement via
+  `--type-keys` : tous les 29 bytes du TAP consommés par readbyte,
+  PC ressort à $C5E8 (BASIC prompt), pas d'« errors found ».
+- Hexdump T1.tap vs AIGLE.TAP : structure header byte-pour-byte
+  identique (sauf adresses et nom).
+
+#### Tests
+- Aucune régression sur 470 tests (108 LOCI + 10 SDIMG + 12 SDIMG
+  write + ~340 autres).
+
+---
+
 ## [1.16.42-alpha] - 2026-06-07
 
 ### LOCI : SDIMG read-write (FAT16/32 write) — Sprint 34ap

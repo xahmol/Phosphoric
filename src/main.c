@@ -934,15 +934,21 @@ do_patch:
     } else if (pc == p->writeleader_entry) {
         /* CSAVE: write tape leader — open output file if needed */
         if (!emu->csave_file) {
-            /* Read the filename from ROM's name buffer at $0035 (up to 16 chars) */
-            char csave_name[32];
+            /* Read filename from $0035 keeping only [A-Z0-9_-.] up to 11
+             * chars. BASIC stores the name with surrounding quotes and
+             * sometimes a length-prefix byte; the raw bytes are not
+             * filesystem-safe. */
+            char csave_name[16] = {0};
             int nlen = 0;
-            for (int i = 0; i < 16; i++) {
-                uint8_t ch = emu->memory.ram[0x0035 + i];
+            for (int i = 0; i < 16 && nlen < 11; i++) {
+                unsigned char ch = emu->memory.ram[0x0035 + i];
                 if (ch == 0) break;
-                csave_name[nlen++] = (char)ch;
+                if (ch >= 'a' && ch <= 'z') ch = ch - 'a' + 'A';
+                if ((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
+                    ch == '_' || ch == '-' || ch == '.') {
+                    csave_name[nlen++] = (char)ch;
+                }
             }
-            csave_name[nlen] = '\0';
 
             /* Build filename: name.tap (or csave_output.tap if empty) */
             char csave_path[64];
@@ -969,91 +975,133 @@ do_patch:
         }
         emu->cpu.PC = p->writeleader_end;
     } else if (pc == p->putbyte_entry) {
-        /* CSAVE: write one byte from CPU A register */
-        if (emu->csave_file) {
-            uint8_t byte = emu->cpu.A;
-            fwrite(&byte, 1, 1, emu->csave_file);
-            emu->csave_byte_count++;
-        }
+        /* CSAVE: putbyte is intercepted but we ignore the byte. The TAP
+         * is rebuilt from RAM at csave_end (which produces a properly
+         * structured Oric TAP, unlike the byte-stream produced here by
+         * the BASIC ROM, which proved unreliable). */
+        emu->csave_byte_count++;
         emu->cpu.PC = p->putbyte_end;
     } else if (pc == p->csave_end) {
-        /* CSAVE complete — close the file */
+        /* CSAVE complete — rebuild the TAP from BASIC RAM (Sprint 34aq).
+         *
+         * Capturing bytes via putbyte_entry produced an unreliable TAP
+         * (header layout depended on undocumented ROM behaviour). We
+         * instead reconstruct a canonical Oric TAP from the BASIC RAM
+         * state at csave_end: TXTTAB ($9A/$9B) and VARTAB ($9C/$9D)
+         * give us start/end addresses, the program data is in RAM, and
+         * the filename was already captured at writeleader_entry. */
         if (emu->csave_file) {
             fclose(emu->csave_file);
-            log_info("CSAVE: saved %d bytes to %s",
-                     emu->csave_byte_count, emu->csave_last_path);
             emu->csave_file = NULL;
             emu->csave_byte_count = 0;
+        }
 
-            /* Sprint 34ap: re-buffer the just-saved tape into emu->tapebuf
-             * so a follow-up CLOAD finds it, and persist into the SDIMG
-             * if one is attached so the next session sees the file. */
-            FILE* fr = fopen(emu->csave_last_path, "rb");
-            if (fr) {
-                fseek(fr, 0, SEEK_END);
-                long sz = ftell(fr);
-                fseek(fr, 0, SEEK_SET);
-                if (sz > 0) {
-                    if (emu->tapebuf) free(emu->tapebuf);
-                    emu->tapebuf = (uint8_t*)malloc((size_t)sz);
-                    if (emu->tapebuf && fread(emu->tapebuf, 1, (size_t)sz, fr) == (size_t)sz) {
-                        emu->tapelen = (int)sz;
-                        emu->tapeoffs = 0;
-                        emu->tape_loaded = true;
-                        emu->tape_syncstack = -1;
-                        log_info("CSAVE: re-buffered %ld bytes for CLOAD", sz);
-                    }
+        uint16_t start_addr =
+            (uint16_t)(emu->memory.ram[0x9A] | (emu->memory.ram[0x9B] << 8));
+        uint16_t end_addr =
+            (uint16_t)(emu->memory.ram[0x9C] | (emu->memory.ram[0x9D] << 8));
+        /* VARTAB points to first byte AFTER program → subtract 1 for
+         * the inclusive end address used in the TAP header. */
+        if (end_addr > start_addr) end_addr--;
+        int prog_len = (int)end_addr - (int)start_addr + 1;
+        if (prog_len < 0) prog_len = 0;
+
+        /* Sanitize the BASIC filename (it can contain leading length
+         * bytes / quotes from the BASIC tokenizer). */
+        char clean_name[12] = {0};
+        int ci = 0;
+        for (int i = 0; i < 16 && ci < 11; i++) {
+            unsigned char c = emu->memory.ram[0x0035 + i];
+            if (c == 0) break;
+            if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
+            if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                c == '_' || c == '-' || c == '.') {
+                clean_name[ci++] = (char)c;
+            }
+        }
+        if (ci == 0) snprintf(clean_name, sizeof(clean_name), "CSAVE");
+
+        /* Build the canonical TAP. */
+        int tap_cap = 4 /*leader+sync*/ + 8 /*header (2pad+type+auto+end+start+null)*/ +
+                      (int)strlen(clean_name) + 1 + prog_len;
+        uint8_t* tap = (uint8_t*)malloc((size_t)tap_cap);
+        if (tap) {
+            int t = 0;
+            tap[t++] = 0x16; tap[t++] = 0x16; tap[t++] = 0x16;
+            tap[t++] = 0x24;
+            tap[t++] = 0x00; tap[t++] = 0x00;                    /* 2 padding bytes */
+            tap[t++] = 0x00;                                     /* type: program */
+            tap[t++] = 0xC7;                                     /* auto-run */
+            tap[t++] = (uint8_t)(end_addr >> 8);
+            tap[t++] = (uint8_t)(end_addr & 0xFF);
+            tap[t++] = (uint8_t)(start_addr >> 8);
+            tap[t++] = (uint8_t)(start_addr & 0xFF);
+            tap[t++] = 0x00;                                     /* reserved */
+            size_t nlen = strlen(clean_name);
+            memcpy(tap + t, clean_name, nlen); t += (int)nlen;
+            tap[t++] = 0x00;                                     /* name null */
+            for (int i = 0; i < prog_len; i++) {
+                tap[t++] = emu->memory.ram[start_addr + i];
+            }
+
+            /* Overwrite the host file with the proper TAP. */
+            FILE* fw = fopen(emu->csave_last_path, "wb");
+            if (fw) {
+                fwrite(tap, 1, (size_t)t, fw);
+                fclose(fw);
+                log_info("CSAVE: built TAP %s (%d bytes, prog $%04X-$%04X)",
+                         emu->csave_last_path, t, start_addr, end_addr);
+            }
+
+            /* Re-buffer for in-session CLOAD. */
+            if (emu->tapebuf) free(emu->tapebuf);
+            emu->tapebuf = (uint8_t*)malloc((size_t)t);
+            if (emu->tapebuf) {
+                memcpy(emu->tapebuf, tap, (size_t)t);
+                emu->tapelen = t;
+                emu->tapeoffs = 0;
+                emu->tape_loaded = true;
+                emu->tape_syncstack = -1;
+                log_info("CSAVE: re-buffered %d bytes for CLOAD", t);
+            }
+
+            /* Persist to SDIMG so the file survives a restart. */
+            if (emu->has_loci && emu->loci.sdimg && t > 0) {
+                char sd_name[16] = {0};
+                int sci = 0;
+                for (int i = 0; clean_name[i] && sci < 8 && clean_name[i] != '.'; i++) {
+                    sd_name[sci++] = clean_name[i];
                 }
-                fclose(fr);
-
-                /* Persist to SDIMG so the file survives restart. */
-                if (emu->has_loci && emu->loci.sdimg && emu->tapebuf && emu->tapelen > 0) {
-                    /* Derive 8.3 basename: keep only [A-Z0-9_] from the
-                     * BASIC-supplied filename. BASIC may sandwich the
-                     * user input with a length byte, quotes, and spaces. */
-                    const char* base = strrchr(emu->csave_last_path, '/');
-                    base = base ? base + 1 : emu->csave_last_path;
-                    char clean[16] = {0};
-                    int ci = 0;
-                    for (; *base && ci < 8 && *base != '.'; base++) {
-                        unsigned char c = (unsigned char)*base;
-                        if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
-                        if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
-                            c == '_' || c == '-') {
-                            clean[ci++] = (char)c;
-                        }
+                if (sci == 0) {
+                    snprintf(sd_name, sizeof(sd_name), "CSAVE.TAP");
+                } else {
+                    sd_name[sci] = 0;
+                    snprintf(sd_name + sci, sizeof(sd_name) - sci, ".TAP");
+                }
+                int fd = loci_sdimg_fopen_ex(
+                    (loci_sdimg_t*)emu->loci.sdimg, sd_name, 1);
+                if (fd >= 0) {
+                    int written = 0;
+                    while (written < t) {
+                        int chunk = t - written;
+                        if (chunk > 256) chunk = 256;
+                        int bw = loci_sdimg_fwrite(
+                            (loci_sdimg_t*)emu->loci.sdimg, fd,
+                            tap + written, (uint16_t)chunk);
+                        if (bw <= 0) break;
+                        written += bw;
                     }
-                    if (ci == 0) {
-                        /* Fallback when the BASIC name was unrecognisable
-                         * (empty after sanitization) — use a timestamped
-                         * name so we don't clobber existing files. */
-                        snprintf(clean, sizeof(clean), "CSAVE%03d",
-                                 (int)(emu->tapelen % 1000));
-                        ci = (int)strlen(clean);
-                    }
-                    snprintf(clean + ci, sizeof(clean) - ci, ".TAP");
-                    int fd = loci_sdimg_fopen_ex(
-                        (loci_sdimg_t*)emu->loci.sdimg, clean, 1);
-                    if (fd >= 0) {
-                        int total = 0;
-                        while (total < emu->tapelen) {
-                            int chunk = emu->tapelen - total;
-                            if (chunk > 256) chunk = 256;
-                            int bw = loci_sdimg_fwrite(
-                                (loci_sdimg_t*)emu->loci.sdimg, fd,
-                                emu->tapebuf + total, (uint16_t)chunk);
-                            if (bw <= 0) break;
-                            total += bw;
-                        }
-                        loci_sdimg_fclose((loci_sdimg_t*)emu->loci.sdimg, fd);
-                        loci_sdimg_sync((loci_sdimg_t*)emu->loci.sdimg);
-                        log_info("CSAVE: persisted %d bytes to SDIMG as %s",
-                                 total, clean);
-                    } else {
-                        log_warning("CSAVE: SDIMG persist failed (errno=%d)", -fd);
-                    }
+                    loci_sdimg_fclose((loci_sdimg_t*)emu->loci.sdimg, fd);
+                    loci_sdimg_sync((loci_sdimg_t*)emu->loci.sdimg);
+                    log_info("CSAVE: persisted %d bytes to SDIMG as %s",
+                             written, sd_name);
+                } else {
+                    log_warning("CSAVE: SDIMG persist failed (errno=%d)", -fd);
                 }
             }
+            free(tap);
+        } else {
+            log_warning("CSAVE: OOM rebuilding TAP");
         }
     }
 }

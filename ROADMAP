@@ -539,6 +539,26 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34s: Symboles debugger — chargement .sym/.lab/.sym65 (v1.16.18-alpha) - DONE
+- [x] Nouveau module utils/symbols (.h + .c)
+- [x] 4 formats auto-détectés :
+      Oricutron addr-first ($XXXX NAME / XXXX NAME),
+      EQU (NAME = $XXXX / NAME EQU $XXXX),
+      VICE / xa65 .lab (al C XXXX .NAME)
+- [x] Commentaires ; et #, séparateurs , : =, leading . ou _ strippé
+- [x] CLI --symbols FILE (multiple loads accumulés)
+- [x] REPL : b NAME, w NAME, d NAME, m NAME résolvent via symboles
+- [x] Nouvelle commande sym [NAME|ADDR] : liste/résout symboles
+- [x] PC display dans regs : ajout <SYMBOL> si match
+- [x] Disasm : label affiché sur sa propre ligne avant l'instruction
+- [x] Listes b/w : symboles affichés à côté des adresses
+- [x] Fix régression hex glouton : "CLOAD_END = $E502" était parsé
+      comme adresse $C avec nom "LOAD_END" (parser hex acceptait préfixe C)
+- [x] 10 nouveaux tests test-symbols (formats, mixed, case-insensitive,
+      régression bug, fichier manquant, accumulation)
+- [x] Sprint déclenché par gap #1 du comparatif debug Phosphoric vs Oricutron
+- [x] 340 tests pass
+
 ### Sprint 34r: Attributs texte ULA — double hauteur / alt charset / blink (v1.16.17-alpha) - DONE
 - [x] decode_attr case 0x08 décode bit 0 (alt) / bit 1 (double) / bit 2 (blink)
       (auparavant break muet → groupe 0x08-0x0F totalement ignoré)

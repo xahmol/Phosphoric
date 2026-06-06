@@ -236,6 +236,7 @@ static void print_usage(const char* program_name) {
     printf("      --profile FILE         Write CPU performance profile to FILE on exit\n");
     printf("      --dump-ram-at C:FILE   Dump 64KB RAM to FILE when cycle >= C\n");
     printf("      --rom-info [FILE]      Analyze ROM and print report (or write to FILE)\n");
+    printf("      --symbols FILE         Load symbol table (.sym / .lab / .sym65)\n");
     printf("      --serial TYPE          Serial: loopback, tcp:H:P, pty, modem:H:P, com:B,D,P,S,DEV, digitelec:H:P\n");
     printf("      --serial-v23          V23 mode: 1200/75 baud (Minitel/Prestel/Digitelec)\n");
     printf("                            (auto-enabled with digitelec backend)\n");
@@ -1266,6 +1267,7 @@ int main(int argc, char* argv[]) {
     const char* trace_file = NULL;
     const char* dump_ram_at_arg = NULL;
     const char* trace_irq_file = NULL;
+    const char* symbols_file = NULL;
     int64_t trace_max = 0;
     const char* profile_file = NULL;
     const char* rom_info_file = NULL;
@@ -1277,7 +1279,7 @@ int main(int argc, char* argv[]) {
     bool serial_irq_on_rdrf = false;
     const char* serial_trace_file = NULL;
     /* Long option codes for options without short equivalents */
-    enum { OPT_SCREENSHOT = 256, OPT_SCREENSHOT_AT, OPT_FRAME_DUMP, OPT_FRAME_DUMP_INTERVAL, OPT_TYPE_KEYS, OPT_DISK_ROM, OPT_DISK1, OPT_DISK2, OPT_DISK3, OPT_BREAKPOINT, OPT_DEBUG_BREAK, OPT_CAST_SERVER, OPT_CAST_DISCOVER, OPT_CAST_TO, OPT_SAVE_STATE, OPT_LOAD_STATE, OPT_MODEL, OPT_JOYSTICK, OPT_PRINTER, OPT_PRINTER_TYPE, OPT_SCALE, OPT_TRACE, OPT_TRACE_MAX, OPT_PROFILE, OPT_ROM_INFO, OPT_SERIAL, OPT_SERIAL_V23, OPT_ACIA_ADDR, OPT_SERIAL_BUFFER, OPT_SERIAL_IRQ_RDRF, OPT_SERIAL_TRACE, OPT_DUMP_RAM_AT, OPT_TRACE_IRQ };
+    enum { OPT_SCREENSHOT = 256, OPT_SCREENSHOT_AT, OPT_FRAME_DUMP, OPT_FRAME_DUMP_INTERVAL, OPT_TYPE_KEYS, OPT_DISK_ROM, OPT_DISK1, OPT_DISK2, OPT_DISK3, OPT_BREAKPOINT, OPT_DEBUG_BREAK, OPT_CAST_SERVER, OPT_CAST_DISCOVER, OPT_CAST_TO, OPT_SAVE_STATE, OPT_LOAD_STATE, OPT_MODEL, OPT_JOYSTICK, OPT_PRINTER, OPT_PRINTER_TYPE, OPT_SCALE, OPT_TRACE, OPT_TRACE_MAX, OPT_PROFILE, OPT_ROM_INFO, OPT_SERIAL, OPT_SERIAL_V23, OPT_ACIA_ADDR, OPT_SERIAL_BUFFER, OPT_SERIAL_IRQ_RDRF, OPT_SERIAL_TRACE, OPT_DUMP_RAM_AT, OPT_TRACE_IRQ, OPT_SYMBOLS };
 
     static struct option long_options[] = {
         {"tape",                required_argument, 0, 't'},
@@ -1323,6 +1325,7 @@ int main(int argc, char* argv[]) {
         {"acia-addr",           required_argument, 0, OPT_ACIA_ADDR},
         {"dump-ram-at",         required_argument, 0, OPT_DUMP_RAM_AT},
         {"trace-irq",           required_argument, 0, OPT_TRACE_IRQ},
+        {"symbols",             required_argument, 0, OPT_SYMBOLS},
         {"help",                no_argument,       0, '?'},
         {0, 0, 0, 0}
     };
@@ -1399,6 +1402,7 @@ int main(int argc, char* argv[]) {
                 break;
             case OPT_DUMP_RAM_AT: dump_ram_at_arg = optarg; break;
             case OPT_TRACE_IRQ: trace_irq_file = optarg; break;
+            case OPT_SYMBOLS: symbols_file = optarg; break;
             case OPT_ACIA_ADDR:
                 acia_addr_arg = optarg;
                 break;
@@ -1623,6 +1627,15 @@ int main(int argc, char* argv[]) {
         emu.irq_trace_active = true;
         emu.cpu.irq_trace_fp = fp;
         log_info("IRQ trace → %s", trace_irq_file);
+    }
+
+    /* Load symbol table (--symbols FILE) */
+    symbol_table_init(&emu.symbols);
+    if (symbols_file) {
+        if (symbol_table_load(&emu.symbols, symbols_file) < 0) {
+            emulator_cleanup(&emu);
+            return 1;
+        }
     }
 
     /* Parse --screenshot-at CYCLES:FILE */

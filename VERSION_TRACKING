@@ -1,12 +1,22 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.17-alpha
+Current Version: 1.16.18-alpha
 Release Date: 2026-06-06
-Status: Alpha (Attributs texte ULA : double hauteur, alt charset, blink — 327 tests pass)
+Status: Alpha (Symboles debugger .sym/.lab/.sym65 — 340 tests pass)
 
 Version History:
 ----------------
+- 1.16.18-alpha (2026-06-06): Symboles debugger — .sym/.lab/.sym65 (Sprint 34s)
+  * Module utils/symbols : 4 formats auto-détectés (addr-first $/no-$,
+    EQU, VICE .lab), comments ;/#, séparateurs ,:=
+  * CLI --symbols FILE (accumulable)
+  * REPL : b/w/d/m acceptent noms ; commande sym ; regs affiche <SYM>
+    à côté du PC ; disasm affiche label sur sa propre ligne
+  * 10 tests test-symbols incluant régression "CLOAD_END parsé $C"
+  * Sprint déclenché par gap n°1 du comparatif debug vs Oricutron
+  * 340 tests pass
+
 - 1.16.17-alpha (2026-06-06): Attributs texte ULA — DBL/alt/blink (Sprint 34r)
   * decode_attr case 0x08 décode désormais bits alt(0) / double(1) / blink(2)
     (auparavant break muet → groupe 0x08-0x0F totalement ignoré)

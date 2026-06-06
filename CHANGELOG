@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.18-alpha] - 2026-06-06
+
+### Debug : chargement symboles (.sym / .lab / .sym65) — Sprint 34s
+
+#### Added
+- **Module `utils/symbols`** : table de symboles avec 4 formats auto-détectés :
+  - `$XXXX NAME` ou `XXXX NAME` (Oricutron, addr-first)
+  - `NAME = $XXXX` ou `NAME EQU $XXXX` (EQU/assignation)
+  - `al C XXXX .NAME` (VICE / xa65 `.lab`)
+  - Variantes lowercase, séparateurs `,:=`, commentaires `;` et `#`
+- **`--symbols FILE`** : option CLI, accepte plusieurs `--symbols` (accumulés).
+- **REPL debugger** :
+  - `b NAME`, `w NAME` : breakpoints / watchpoints par nom symbolique
+  - `d NAME [n]`, `m NAME [len]` : disasm / dump à l'adresse d'un symbole
+  - `sym` : liste les 20 premiers symboles chargés
+  - `sym NAME` : résout nom → adresse ; `sym $XXXX` : résout adresse → nom
+  - PC display dans `regs` : `<SYMBOL>` à côté de l'adresse si match
+  - Disasm : label affiché sur sa propre ligne avant l'instruction
+  - Listes b/w : symboles affichés à côté des adresses
+- **10 nouveaux tests** `test-symbols` couvrant les 4 formats, mixed,
+  case-insensitive, régression bug "CLOAD_END parsé comme $C", fichier
+  manquant, accumulation multi-load.
+
+#### Fixed
+- **Régression hex glouton** dans parser addr-first : `CLOAD_END = $E502`
+  était parsé comme adresse $C avec nom "LOAD_END" (parser hex prenait le
+  préfixe `C` valide hex). Validation : token hex doit être suivi de
+  whitespace ou séparateur, pas d'autre alphanum.
+
+#### Changed
+- `emulator_t` enrichi de `symbol_table_t symbols`.
+- `Makefile` : nouveau target `test-symbols`, intégré à `tests:` ;
+  `test-debugger` et `test-coverage` linkent désormais `symbols.c`.
+
 ## [1.16.17-alpha] - 2026-06-06
 
 ### Vidéo : attributs texte ULA (double hauteur, alt charset, blink) — Sprint 34r

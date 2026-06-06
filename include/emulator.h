@@ -31,9 +31,10 @@
 #include "debugger.h"
 #include "utils/trace.h"
 #include "utils/profiler.h"
+#include "utils/symbols.h"
 #include "network/cast_server.h"
 
-#define EMU_VERSION "1.16.17-alpha"
+#define EMU_VERSION "1.16.18-alpha"
 
 /**
  * @brief ORIC machine model
@@ -173,6 +174,9 @@ typedef struct emulator_s {
 
     /* Interactive debugger */
     debugger_t debugger;
+
+    /* Symbol table for debugger (loaded via --symbols) */
+    symbol_table_t symbols;
 
     /* CPU trace logging */
     cpu_trace_t trace;

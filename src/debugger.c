@@ -21,6 +21,19 @@
 #include "io/via6522.h"
 #include "audio/audio.h"
 
+/* Parse an address argument: tries the symbol table first (case-insensitive),
+ * then falls back to hex parsing. Returns true if recognised. */
+static bool parse_addr(const emulator_t* emu, const char* s, uint16_t* out) {
+    if (!s || !*s) return false;
+    if (symbol_resolve(&emu->symbols, s, out)) return true;
+    if (*s == '$') s++;
+    char* end = NULL;
+    unsigned long v = strtoul(s, &end, 16);
+    if (end == s || v > 0xFFFF) return false;
+    *out = (uint16_t)v;
+    return true;
+}
+
 /* ═══════════════════════════════════════════════════════════════════ */
 /*  INIT                                                               */
 /* ═══════════════════════════════════════════════════════════════════ */
@@ -163,14 +176,17 @@ bool debugger_should_break(debugger_t* dbg, emulator_t* emu) {
 static void show_registers(emulator_t* emu) {
     char state[128];
     cpu_get_state_string(&emu->cpu, state, sizeof(state));
-    printf("%s\n", state);
+    const char* sym = symbol_lookup(&emu->symbols, emu->cpu.PC);
+    if (sym) printf("%s  <%s>\n", state, sym);
+    else     printf("%s\n", state);
 }
 
 static void show_disassembly(emulator_t* emu, uint16_t addr, int count) {
     for (int i = 0; i < count; i++) {
         char buf[64];
         int bytes = cpu_disassemble(&emu->cpu, addr, buf, sizeof(buf));
-        /* Show bytes */
+        const char* sym = symbol_lookup(&emu->symbols, addr);
+        if (sym) printf("  %s:\n", sym);
         printf("  $%04X: ", addr);
         for (int b = 0; b < 3; b++) {
             if (b < bytes)
@@ -301,6 +317,8 @@ static void show_help(void) {
     printf("  psg               Show PSG AY-3-8910 state\n");
     printf("  stack             Show stack contents\n");
     printf("  set reg val       Set register (A,X,Y,SP,PC,P)\n");
+    printf("  sym [name|addr]   List symbols / resolve name or address\n");
+    printf("  (addr args accept symbol names if --symbols was loaded)\n");
     printf("  q / quit          Quit emulator\n");
     printf("  h / help          Show this help\n");
     printf("\n");
@@ -377,11 +395,38 @@ void debugger_repl(debugger_t* dbg, emulator_t* emu) {
             show_registers(emu);
         }
         /* ── DISASSEMBLE ────────────────────────────────── */
+        else if (strcmp(cmd, "sym") == 0) {
+            if (!arg1[0]) {
+                if (emu->symbols.count == 0) {
+                    printf("  No symbols loaded (use --symbols FILE)\n");
+                } else {
+                    printf("  %d symbols loaded\n", emu->symbols.count);
+                    int show = emu->symbols.count > 20 ? 20 : emu->symbols.count;
+                    for (int i = 0; i < show; i++)
+                        printf("    $%04X  %s\n",
+                               emu->symbols.entries[i].addr,
+                               emu->symbols.entries[i].name);
+                    if (emu->symbols.count > show)
+                        printf("    … (%d more)\n", emu->symbols.count - show);
+                }
+            } else {
+                uint16_t addr;
+                if (parse_addr(emu, arg1, &addr)) {
+                    const char* s = symbol_lookup(&emu->symbols, addr);
+                    if (s) printf("  $%04X = %s\n", addr, s);
+                    else   printf("  $%04X = (no symbol)\n", addr);
+                } else {
+                    printf("  Unknown symbol: %s\n", arg1);
+                }
+            }
+        }
         else if (strcmp(cmd, "d") == 0) {
             uint16_t addr = emu->cpu.PC;
             int count = 10;
-            if (arg1[0])
-                addr = (uint16_t)strtol(arg1, NULL, 16);
+            if (arg1[0]) {
+                uint16_t a;
+                if (parse_addr(emu, arg1, &a)) addr = a;
+            }
             if (arg2[0])
                 count = atoi(arg2);
             if (count < 1) count = 1;
@@ -393,7 +438,11 @@ void debugger_repl(debugger_t* dbg, emulator_t* emu) {
             if (!arg1[0]) {
                 printf("  Usage: m addr [len]\n");
             } else {
-                uint16_t addr = (uint16_t)strtol(arg1, NULL, 16);
+                uint16_t addr;
+                if (!parse_addr(emu, arg1, &addr)) {
+                    printf("  Unknown address/symbol: %s\n", arg1);
+                    continue;
+                }
                 int len2 = 256;
                 if (arg2[0])
                     len2 = (int)strtol(arg2, NULL, 0);
@@ -410,11 +459,18 @@ void debugger_repl(debugger_t* dbg, emulator_t* emu) {
                     printf("  No breakpoints set\n");
                 } else {
                     printf("  Breakpoints:\n");
-                    for (int i = 0; i < dbg->num_breakpoints; i++)
-                        printf("    #%d: $%04X\n", i, dbg->breakpoints[i]);
+                    for (int i = 0; i < dbg->num_breakpoints; i++) {
+                        const char* s = symbol_lookup(&emu->symbols, dbg->breakpoints[i]);
+                        if (s) printf("    #%d: $%04X  %s\n", i, dbg->breakpoints[i], s);
+                        else   printf("    #%d: $%04X\n", i, dbg->breakpoints[i]);
+                    }
                 }
             } else {
-                uint16_t addr = (uint16_t)strtol(arg1, NULL, 16);
+                uint16_t addr;
+                if (!parse_addr(emu, arg1, &addr)) {
+                    printf("  Unknown address/symbol: %s\n", arg1);
+                    continue;
+                }
                 int idx = debugger_add_breakpoint(dbg, addr);
                 if (idx >= 0)
                     printf("  Breakpoint #%d set at $%04X\n", idx, addr);
@@ -443,11 +499,18 @@ void debugger_repl(debugger_t* dbg, emulator_t* emu) {
                     printf("  No watchpoints set\n");
                 } else {
                     printf("  Watchpoints (write):\n");
-                    for (int i = 0; i < dbg->num_watchpoints; i++)
-                        printf("    #%d: $%04X\n", i, dbg->watchpoints[i]);
+                    for (int i = 0; i < dbg->num_watchpoints; i++) {
+                        const char* s = symbol_lookup(&emu->symbols, dbg->watchpoints[i]);
+                        if (s) printf("    #%d: $%04X  %s\n", i, dbg->watchpoints[i], s);
+                        else   printf("    #%d: $%04X\n", i, dbg->watchpoints[i]);
+                    }
                 }
             } else {
-                uint16_t addr = (uint16_t)strtol(arg1, NULL, 16);
+                uint16_t addr;
+                if (!parse_addr(emu, arg1, &addr)) {
+                    printf("  Unknown address/symbol: %s\n", arg1);
+                    continue;
+                }
                 int idx = debugger_add_watchpoint(dbg, addr);
                 if (idx >= 0) {
                     printf("  Watchpoint #%d set at $%04X (write)\n", idx, addr);

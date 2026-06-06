@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.23-alpha] - 2026-06-06
+
+### Debug : compte de cycles dans le disassembleur — Sprint 34x
+
+#### Added
+- **Cycle count par instruction** affiché à droite du mnémonique :
+  - REPL : `$F42D: 4C 4A F8  JMP $F84A          ; 3 cyc`
+  - TUI : `> $F42D: JMP $F84A          [3] ; SYMBOL`
+- Compte de base (sans pénalité branch-taken ni page-cross), lu depuis
+  la table d'opcodes existante.
+- **`cpu_opcode_cycles(uint8_t opcode)`** : nouvelle API publique dans
+  `cpu6502.h` pour exposer le coût de base d'un opcode.
+
+#### Why
+Aide à profiler les routines temps réel (démos cycle-locked, audio PSG,
+loops de scan clavier VIA). Quasi gratuit puisque la table existait
+déjà — sprint déclenché par le besoin d'outillage côté tuning fin.
+
 ## [1.16.22-alpha] - 2026-06-06
 
 ### Debug : TUI ncurses optionnel — Sprint 34w

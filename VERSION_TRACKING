@@ -1,12 +1,20 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.22-alpha
+Current Version: 1.16.23-alpha
 Release Date: 2026-06-06
-Status: Alpha (TUI ncurses multi-panes optionnel — 340 tests pass)
+Status: Alpha (Cycle counts dans le disasm — 340 tests pass)
 
 Version History:
 ----------------
+- 1.16.23-alpha (2026-06-06): Cycle counts dans le disasm (Sprint 34x)
+  * cpu_opcode_cycles(opcode) : nouvelle API publique
+  * REPL disasm : "... ; N cyc" après le mnémonique
+  * TUI disasm : "... [N] ; SYMBOL" — compact pour la fenêtre
+  * Pénalités branch-taken/page-cross non comptées (base seulement)
+  * Sprint déclenché par axe "debug tuning fin" post-fermeture des 5 gaps
+  * 340 tests pass
+
 - 1.16.22-alpha (2026-06-06): TUI ncurses optionnel (Sprint 34w)
   * Build flag TUI=1 (linke -lncursesw, sinon stubs static inline)
   * CLI --tui : 6 panes ncurses (regs, stack, disasm, mem, bp/wp, status)

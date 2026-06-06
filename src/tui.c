@@ -186,11 +186,14 @@ static void draw_disasm(emulator_t* emu) {
         if (is_pc) wattron(w_disasm, COLOR_PAIR(2) | A_BOLD);
         else if (is_bp) wattron(w_disasm, COLOR_PAIR(4));
         char prefix = is_pc ? '>' : (is_bp ? '*' : ' ');
+        uint8_t opc = memory_read(&emu->memory, addr);
+        uint8_t cyc = cpu_opcode_cycles(opc);
         if (sym) {
-            mvwprintw(w_disasm, row, 2, "%c $%04X: %-20s ; %s",
-                      prefix, addr, buf, sym);
+            mvwprintw(w_disasm, row, 2, "%c $%04X: %-18s [%u] ; %s",
+                      prefix, addr, buf, cyc, sym);
         } else {
-            mvwprintw(w_disasm, row, 2, "%c $%04X: %s", prefix, addr, buf);
+            mvwprintw(w_disasm, row, 2, "%c $%04X: %-18s [%u]",
+                      prefix, addr, buf, cyc);
         }
         if (is_pc) wattroff(w_disasm, COLOR_PAIR(2) | A_BOLD);
         else if (is_bp) wattroff(w_disasm, COLOR_PAIR(4));

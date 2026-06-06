@@ -333,7 +333,8 @@ static uint16_t show_disassembly(emulator_t* emu, uint16_t addr, int count) {
             else
                 printf("   ");
         }
-        printf(" %s", buf);
+        uint8_t opc = memory_read(&emu->memory, addr);
+        printf(" %-18s ; %u cyc", buf, cpu_opcode_cycles(opc));
         if (addr == emu->cpu.PC)
             printf("  <---");
         printf("\n");

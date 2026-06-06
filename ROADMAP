@@ -539,6 +539,13 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34x: Cycle counts dans le disasm (v1.16.23-alpha) - DONE
+- [x] cpu_opcode_cycles(opcode) : nouvelle API publique cpu6502.h
+- [x] REPL show_disassembly : "  ; N cyc" après chaque instruction
+- [x] TUI draw_disasm : "[N] ; SYMBOL" compact (largeur fenêtre)
+- [x] Sprint déclenché par axe "tuning fin / démos cycle-locked"
+- [x] 340 tests pass
+
 ### Sprint 34w: TUI ncurses multi-panes optionnel (v1.16.22-alpha) - DONE
 - [x] Build flag TUI=1 (linke -lncursesw, sinon stubs static inline pour compat)
 - [x] Module src/tui.c + include/tui.h

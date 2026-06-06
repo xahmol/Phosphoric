@@ -139,6 +139,10 @@ static const char* addr_mode_fmt(addressing_mode_t mode, uint8_t lo, uint8_t hi)
     return buf;
 }
 
+uint8_t cpu_opcode_cycles(uint8_t opcode) {
+    return opcode_table[opcode].cycles;
+}
+
 int cpu_disassemble(const cpu6502_t* cpu, uint16_t address, char* buffer, size_t buffer_size) {
     memory_t* mem = cpu->memory;
     uint8_t opcode = memory_read(mem, address);

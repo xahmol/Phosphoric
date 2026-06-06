@@ -190,6 +190,12 @@ bool cpu_get_flag(const cpu6502_t* cpu, cpu_flags_t flag);
 int cpu_disassemble(const cpu6502_t* cpu, uint16_t address, char* buffer, size_t buffer_size);
 
 /**
+ * @brief Get base cycle count for an opcode.
+ * Does not include branch-taken/page-cross penalties.
+ */
+uint8_t cpu_opcode_cycles(uint8_t opcode);
+
+/**
  * @brief Get CPU state as string (for debugging)
  *
  * @param cpu Pointer to CPU structure

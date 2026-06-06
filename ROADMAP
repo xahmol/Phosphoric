@@ -539,6 +539,13 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34am: LOCI fix clavier — pre-seed PSG R7=$7F (v1.16.38-alpha) - DONE
+- [x] Cause racine identifiée par instrumentation (PCR/ay writes)
+- [x] ROM LOCI ne fait jamais ay_write_data(7) — dépend du firmware Pi Pico
+- [x] Fix : main.c init psg.registers[7]=$7F après loci_init
+- [x] TUI LOCI répond aux flèches/ESC/Return
+- [x] 445 tests global pass
+
 ### Sprint 34al: LOCI bridge souris SDL → mou_xram (v1.16.37-alpha) - DONE
 - [x] loci_mou_report(buttons, dx, dy, wheel, pan)
 - [x] Bridge SDL : MOUSEMOTION/BUTTONDOWN/UP/WHEEL

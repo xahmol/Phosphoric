@@ -1,12 +1,18 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.37-alpha
+Current Version: 1.16.38-alpha
 Release Date: 2026-06-06
-Status: Alpha (LOCI souris SDL → mou_xram — 445 tests pass)
+Status: Alpha (LOCI fix clavier R7 seed — 445 tests pass)
 
 Version History:
 ----------------
+- 1.16.38-alpha (2026-06-06): LOCI fix clavier pre-seed PSG R7=$7F (Sprint 34am)
+  * Cause racine : ROM LOCI ne programme jamais R7, dépend du firmware Pi Pico
+  * Fix : main.c init psg.registers[7]=$7F après loci_init
+  * TUI LOCI répond maintenant aux flèches/ESC/Return
+  * 445 tests global
+
 - 1.16.37-alpha (2026-06-06): LOCI bridge souris SDL → mou_xram (Sprint 34al)
   * loci_mou_report(buttons, dx, dy, wheel, pan)
   * Bridge SDL_MOUSEMOTION/BUTTONDOWN/UP/WHEEL

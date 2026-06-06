@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.38-alpha] - 2026-06-06
+
+### LOCI : fix clavier — pre-seed PSG R7=$7F (Sprint 34am)
+
+#### Fixed
+- **Aucune touche ne fonctionnait dans la TUI LOCI**. Cause racine :
+  la ROM LOCI v0.3.0 ne programme jamais le registre PSG R7 (`mixer/IO`)
+  — elle s'appuie sur le firmware Pi Pico du hardware réel pour pré-
+  initialiser l'AY à `R7=$7F` (Port A en sortie, tone/noise off). Sans
+  ce setup, le `portb_read_callback` de Phosphoric retourne toujours
+  `PB[3]=0` (filtre R7 bit 6) et la matrice clavier n'est jamais
+  scannée correctement.
+- **Fix** : quand `--loci` est actif, `main.c` initialise
+  `emu.psg.registers[7] = 0x7F` après `loci_init()`, en miroir du
+  firmware Pi Pico. La TUI LOCI répond désormais aux flèches, ESC et
+  Return.
+
+#### Diagnostic
+Le bug a été identifié par instrumentation du callback `portb_read` et
+des écritures PCR — aucune écriture à R7 trouvée dans 500k cycles avec
+la ROM LOCI, alors que la ROM BASIC standard la fait dans son init.
+
 ## [1.16.37-alpha] - 2026-06-06
 
 ### LOCI : bridge souris SDL → mou_xram — Sprint 34al

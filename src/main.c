@@ -1863,6 +1863,15 @@ int main(int argc, char* argv[]) {
             loci_action_install_irq_trap,
             loci_action_release_irq_trap,
             &emu);
+        /* Sprint 34am fix: the real LOCI hardware's Pi Pico firmware
+         * pre-initialises the AY-3-8910 R7 (mixer) to enable Port A as
+         * output for keyboard scanning. The LOCI ROM relies on that
+         * state and never writes R7 itself. Without this seed, the
+         * keyboard scan callback's R7-bit-6 check always rejects, and
+         * no key reaches the LOCI TUI. Mirror the firmware setup so
+         * the ROM's ReadKeyboard sees a working PSG. */
+        emu.psg.registers[7] = 0x7F;
+        log_info("LOCI: pre-seeded PSG R7=$7F (firmware AY init for keyboard)");
         if (loci_flash_root) {
             loci_set_flash_root(&emu.loci, loci_flash_root);
             log_info("LOCI MIA enabled at $%04X-$%04X (flash root: %s)",

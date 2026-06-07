@@ -224,8 +224,14 @@ typedef struct loci_s {
     uint64_t rng_state;
 
     /* Host-fs file backend (Sprint 34aa).
-     * fds[i] is the FILE* for fd = LOCI_FD_OFFSET + i (3..18). NULL = closed. */
-    void* fds[LOCI_FD_MAX];
+     * fds[i] is the FILE* for fd = LOCI_FD_OFFSET + i (3..18). NULL = closed.
+     *
+     * Sprint 34ar : fd_kind[i] discriminates POSIX vs SDIMG ownership so
+     * cleanup never type-puns. 0 = unused, 1 = POSIX FILE*, 2 = SDIMG slot.
+     * TODO(vtable) : when a 3rd backend lands, refactor to a real
+     * loci_fs_vtable_t rather than another scalar. */
+    void*   fds[LOCI_FD_MAX];
+    uint8_t fd_kind[LOCI_FD_MAX];
 
     /* Sandbox root directory — paths from the 6502 are resolved here.
      * NULL = use current working directory. */
@@ -243,8 +249,10 @@ typedef struct loci_s {
     char mnt_paths[LOCI_MNT_MAX][256];
 
     /* Directory iterators (Sprint 34ac). dirs[i] is a host DIR* exposed
-     * to the 6502 as dir_fd = LOCI_DIR_OFFSET + i. */
-    void* dirs[LOCI_DIR_MAX];
+     * to the 6502 as dir_fd = LOCI_DIR_OFFSET + i. dir_kind[i] : 0 = unused,
+     * 1 = POSIX DIR*, 2 = SDIMG slot (Sprint 34ar). */
+    void*   dirs[LOCI_DIR_MAX];
+    uint8_t dir_kind[LOCI_DIR_MAX];
 
     /* USB HID xram addresses (Sprint 34ag) — set by the 6502 via PIX_XREG
      * (device=0=MIA, channel=0, addr=0/1/2 for kbd/mou/pad). 0xFFFF = unset.

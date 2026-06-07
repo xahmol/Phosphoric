@@ -148,6 +148,8 @@ static const rom_patches_t rom_patches_basic10 = {
     .readbyte_entry    = 0xE630,
     .readbyte_end      = 0xE65B,
     .readbyte_store    = 0x002F,
+    .readbyte_storezero= 0,         /* GetTapeByte on Oric-1 does not maintain $02B1 */
+    .readbyte_setcarry = false,     /* and exits with C=0 */
     .cload_data_rts    = 0xE502,
     .putbyte_entry     = 0xE5C6,
     .putbyte_end       = 0xE5F2,
@@ -164,6 +166,8 @@ static const rom_patches_t rom_patches_basic11 = {
     .readbyte_entry    = 0xE6C9,
     .readbyte_end      = 0xE6FB,
     .readbyte_store    = 0x002F,
+    .readbyte_storezero= 0x02B1,    /* Atmos GetTapeByte zeroes the parity accumulator */
+    .readbyte_setcarry = true,      /* and exits with C=1 — VERIFY logic relies on both */
     .cload_data_rts    = 0xE50A,
     .putbyte_entry     = 0xE65E,
     .putbyte_end       = 0xE68A,
@@ -902,30 +906,33 @@ do_patch:
         /* Jump to end of getsync */
         emu->cpu.PC = p->getsync_end;
     } else if (pc == p->readbyte_entry) {
-        /* readbyte: feed next byte from tape buffer to ROM */
+        /* readbyte: feed next byte from tape buffer to ROM. Sprint 34ar
+         * (senior-review fix): mirror what the real GetTapeByte does
+         * version-by-version — on Atmos, $02B1 is the parity accumulator
+         * and the routine exits with C=1 ; on Oric-1, neither applies.
+         * Without these two effects, BASIC 1.1's VERIFY logic accumulates
+         * a phantom error count and prints "Errors found" cosmetically
+         * even though the data loaded correctly. Reference: Oricutron's
+         * .pch tape patch + Atmos GetTapeByte disassembly. */
         if (emu->tapeoffs < emu->tapelen) {
             uint8_t byte = emu->tapebuf[emu->tapeoffs++];
             emu->cpu.A = byte;
-            if (byte == 0)
-                emu->cpu.P |= FLAG_ZERO;
-            else
-                emu->cpu.P &= ~FLAG_ZERO;
-            emu->cpu.P &= ~FLAG_CARRY;
+            if (byte == 0) emu->cpu.P |= FLAG_ZERO;
+            else           emu->cpu.P &= ~FLAG_ZERO;
+            if (p->readbyte_setcarry) emu->cpu.P |=  FLAG_CARRY;
+            else                      emu->cpu.P &= ~FLAG_CARRY;
             memory_write(&emu->memory, p->readbyte_store, byte);
+            if (p->readbyte_storezero) {
+                memory_write(&emu->memory, p->readbyte_storezero, 0x00);
+            }
             emu->cpu.PC = p->readbyte_end;
             emu->tape_readbyte_active = true;
-        } else {
-            /* Sprint 34aq: tape exhausted but BASIC still reading.
-             * Return $00 byte (tape silence) so CLOAD's post-data read
-             * sees a clean tape rather than garbage from emulated tape
-             * input. Avoids spurious "ERRORS FOUND" on short TAPs. */
-            uint8_t byte = 0x00;
-            emu->cpu.A = byte;
-            emu->cpu.P |= FLAG_ZERO;
-            emu->cpu.P &= ~FLAG_CARRY;
-            memory_write(&emu->memory, p->readbyte_store, byte);
-            emu->cpu.PC = p->readbyte_end;
         }
+        /* Tape exhausted: don't intercept — let the ROM bit-decoder time
+         * out naturally. With $02B1/carry now correct, the silence handler
+         * is no longer needed to avoid spurious "Errors found", and not
+         * patching here means BASIC's CLOAD termination signals the end
+         * of tape via its own logic instead of running on synthesised $00. */
     } else if (pc == p->getsync_loop) {
         /* Sync loop recovery */
         if (emu->tape_syncstack >= 0) {

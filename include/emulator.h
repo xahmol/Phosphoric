@@ -35,7 +35,7 @@
 #include "io/loci.h"
 #include "network/cast_server.h"
 
-#define EMU_VERSION "1.16.43-alpha"
+#define EMU_VERSION "1.16.44-alpha"
 
 /**
  * @brief ORIC machine model
@@ -60,6 +60,10 @@ typedef struct rom_patches_s {
     uint16_t readbyte_entry;    /**< readbyte() entry point */
     uint16_t readbyte_end;      /**< readbyte() RTS address */
     uint16_t readbyte_store;    /**< readbyte() byte store address in RAM */
+    uint16_t readbyte_storezero;/**< extra RAM byte zeroed by GetTapeByte (0 = none).
+                                  *  Atmos: $02B1 (tape parity accumulator). */
+    bool     readbyte_setcarry; /**< true if real GetTapeByte returns with C=1.
+                                  *  Atmos: true ; ORIC-1: false. */
     uint16_t cload_data_rts;    /**< CLOAD data loop RTS (triggers post-load rechain) */
     uint16_t putbyte_entry;     /**< putbyte() entry point (CSAVE) */
     uint16_t putbyte_end;       /**< putbyte() RTS address */

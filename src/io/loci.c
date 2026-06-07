@@ -28,6 +28,11 @@
  *   $03B9  API_SREG_HI   return SREG hi
  */
 
+/* _XOPEN_SOURCE 500 exposes mkstemp() prototypes (Sprint 34ar). */
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 500
+#endif
+
 #include "io/loci.h"
 #include "io/loci_sdimg.h"
 #include "utils/logging.h"
@@ -149,20 +154,22 @@ void loci_detach_sdimg(loci_t* loci);
 
 void loci_cleanup(loci_t* loci) {
     if (!loci) return;
-    /* Close any still-open files (Sprint 34aa). When sdimg backend is
-     * active, fds[] holds tagged sentinels (not FILE*), so we just
-     * clear them — loci_detach_sdimg below releases the real handles. */
+    /* Close any still-open files. Sprint 34ar : fd_kind is the
+     * authoritative source for which backend owns each slot — no more
+     * pointer-tag punning. Mixed POSIX/SDIMG cleanup works correctly. */
     for (int i = 0; i < LOCI_FD_MAX; i++) {
-        if (loci->fds[i]) {
-            if (!loci->sdimg) fclose((FILE*)loci->fds[i]);
-            loci->fds[i] = NULL;
+        if (loci->fds[i] && loci->fd_kind[i] == 1) {
+            fclose((FILE*)loci->fds[i]);
         }
+        loci->fds[i] = NULL;
+        loci->fd_kind[i] = 0;
     }
     for (int i = 0; i < LOCI_DIR_MAX; i++) {
-        if (loci->dirs[i]) {
-            if (!loci->sdimg) closedir((DIR*)loci->dirs[i]);
-            loci->dirs[i] = NULL;
+        if (loci->dirs[i] && loci->dir_kind[i] == 1) {
+            closedir((DIR*)loci->dirs[i]);
         }
+        loci->dirs[i] = NULL;
+        loci->dir_kind[i] = 0;
     }
     /* Close mounted TAP (Sprint 34af). */
     if (loci->tap_fp) {
@@ -735,11 +742,16 @@ static int sdimg_errno_to_loci(int neg_errno) {
     }
 }
 
-/* Extract a file from the SD image to a temp file under /tmp, so that
- * legacy POSIX-FILE-based code (rom_swap_cb, tap_open, dsk_open) can
- * keep working unchanged when --loci-sdimg is active. The temp file
- * lives at /tmp/loci_extract_<basename> and is overwritten on each
- * call. Returns true on success and fills out_host_path. */
+/* Extract a file from the SD image to a temp file, so that legacy
+ * POSIX-FILE-based code (rom_swap_cb, tap_open, dsk_open) can keep
+ * working unchanged when --loci-sdimg is active.
+ *
+ * Sprint 34ar : use mkstemp() instead of a predictable
+ * /tmp/loci_extract_<basename> path. Avoids collision when two emulator
+ * instances run concurrently and removes the classic symlink-race vector
+ * (an attacker could pre-create a symlink at the predictable path to
+ * redirect the write). Caller is responsible for unlinking the temp file
+ * after the consumer is done with it. */
 static bool sdimg_extract_to_temp(loci_t* loci, const char* sd_path,
                                   char* out_host_path, size_t out_sz) {
     /* Strip the LOCI volume prefix if present. */
@@ -752,16 +764,25 @@ static bool sdimg_extract_to_temp(loci_t* loci, const char* sd_path,
         log_info("LOCI SDIMG extract: not found in image: '%s' (errno=%d)", p, -fd);
         return false;
     }
-    /* Compose temp path from the basename only. */
+    /* Compose template: /tmp/loci_<basename>_XXXXXX. mkstemp replaces
+     * XXXXXX with 6 random chars and opens the file securely (O_CREAT |
+     * O_EXCL | 0600). */
     const char* base = strrchr(p, '/');
     base = base ? base + 1 : p;
-    int n = snprintf(out_host_path, out_sz, "/tmp/loci_extract_%s", base);
+    int n = snprintf(out_host_path, out_sz, "/tmp/loci_%s_XXXXXX", base);
     if (n <= 0 || (size_t)n >= out_sz) {
         loci_sdimg_fclose((loci_sdimg_t*)loci->sdimg, fd);
         return false;
     }
-    FILE* fp = fopen(out_host_path, "wb");
+    int tmpfd = mkstemp(out_host_path);
+    if (tmpfd < 0) {
+        loci_sdimg_fclose((loci_sdimg_t*)loci->sdimg, fd);
+        return false;
+    }
+    FILE* fp = fdopen(tmpfd, "wb");
     if (!fp) {
+        close(tmpfd);
+        unlink(out_host_path);
         loci_sdimg_fclose((loci_sdimg_t*)loci->sdimg, fd);
         return false;
     }
@@ -801,7 +822,10 @@ static void op_open_sdimg(loci_t* loci) {
         api_return_errno(loci, sdimg_errno_to_loci(slot));
         return;
     }
-    loci->fds[slot] = (void*)(uintptr_t)(0x1000000u | (uint32_t)slot);
+    /* Mark slot as SDIMG-owned via fd_kind; fds[] just holds a non-NULL
+     * marker (loci_t* is convenient and never type-punned). */
+    loci->fds[slot] = loci;
+    loci->fd_kind[slot] = 2;
     api_return_ax(loci, (uint16_t)(slot + LOCI_FD_OFFSET));
 }
 
@@ -814,6 +838,7 @@ static void op_close_sdimg(loci_t* loci) {
     }
     int r = loci_sdimg_fclose((loci_sdimg_t*)loci->sdimg, slot);
     loci->fds[slot] = NULL;
+    loci->fd_kind[slot] = 0;
     if (r < 0) { api_return_errno(loci, sdimg_errno_to_loci(r)); return; }
     api_return_ax(loci, 0);
 }
@@ -875,7 +900,8 @@ static void op_opendir_sdimg(loci_t* loci) {
     int slot = loci_sdimg_opendir((loci_sdimg_t*)loci->sdimg, p);
     if (slot < 0) { api_return_errno(loci, sdimg_errno_to_loci(slot)); return; }
     /* Tag dirs[] slot for collision avoidance. */
-    loci->dirs[slot] = (void*)(uintptr_t)(0x2000000u | (uint32_t)slot);
+    loci->dirs[slot] = loci;
+    loci->dir_kind[slot] = 2;
     api_return_ax(loci, (uint16_t)(slot + LOCI_DIR_OFFSET));
 }
 
@@ -887,6 +913,7 @@ static void op_closedir_sdimg(loci_t* loci) {
     }
     int r = loci_sdimg_closedir((loci_sdimg_t*)loci->sdimg, slot);
     loci->dirs[slot] = NULL;
+    loci->dir_kind[slot] = 0;
     if (r < 0) { api_return_errno(loci, sdimg_errno_to_loci(r)); return; }
     api_return_ax(loci, 0);
 }
@@ -958,6 +985,7 @@ static void op_open(loci_t* loci) {
         return;
     }
     loci->fds[slot] = fp;
+    loci->fd_kind[slot] = 1;
     api_return_ax(loci, (uint16_t)(slot + LOCI_FD_OFFSET));
 }
 
@@ -972,6 +1000,7 @@ static void op_close(loci_t* loci) {
     }
     fclose(fp);
     loci->fds[fd - LOCI_FD_OFFSET] = NULL;
+    loci->fd_kind[fd - LOCI_FD_OFFSET] = 0;
     api_return_ax(loci, 0);
 }
 
@@ -1422,6 +1451,7 @@ static void op_opendir(loci_t* loci) {
         return;
     }
     loci->dirs[slot] = d;
+    loci->dir_kind[slot] = 1;
     api_return_ax(loci, (uint16_t)(slot + LOCI_DIR_OFFSET));
 }
 
@@ -1436,6 +1466,7 @@ static void op_closedir(loci_t* loci) {
     }
     closedir(d);
     loci->dirs[fd - LOCI_DIR_OFFSET] = NULL;
+    loci->dir_kind[fd - LOCI_DIR_OFFSET] = 0;
     api_return_ax(loci, 0);
 }
 

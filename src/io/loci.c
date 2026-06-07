@@ -1783,11 +1783,23 @@ static void loci_fdc_clr_drq(void* userdata) {
 }
 static void loci_fdc_set_intrq(void* userdata) {
     loci_t* l = (loci_t*)userdata;
-    if (l) l->dsk_intrq = 0x00;
+    if (!l) return;
+    l->dsk_intrq = 0x00;
+    /* 34ay : si INTENA déjà actif quand le FDC fire INTRQ, assert CPU
+     * IRQ aussi — pas uniquement sur CTRL write. Sinon le Microdisc
+     * ROM polls infiniment STATUS sans recevoir d'IRQ. */
+    if (l->dsk_intena && l->dsk_cpu_irq_set) {
+        l->dsk_cpu_irq_set(l->dsk_bus_ctx);
+    }
 }
 static void loci_fdc_clr_intrq(void* userdata) {
     loci_t* l = (loci_t*)userdata;
-    if (l) l->dsk_intrq = 0x80;
+    if (!l) return;
+    l->dsk_intrq = 0x80;
+    /* Clear CPU IRQ aussi (cohérent level-triggered). */
+    if (l->dsk_cpu_irq_clr) {
+        l->dsk_cpu_irq_clr(l->dsk_bus_ctx);
+    }
 }
 
 /* ─── DSK WD1793 cycle-accurate (Sprint 34aw) ──────────────────────
@@ -1918,6 +1930,12 @@ void loci_dsk_write(loci_t* loci, uint16_t address, uint8_t value) {
             loci->dsk_intena = (value & 0x01) != 0;
             uint8_t side = (value & 0x10) ? 1 : 0;
             bool diskrom = (value & 0x80) == 0;   /* bit 7 active-low : EPROM */
+            /* 34az : ROMDIS dynamique (bit 1 active-low), miroir microdisc
+             * natif. Sedoric re-map BASIC ROM en $C000-$DFFF via ROMDIS=1
+             * pour appeler des routines BASIC tout en gardant ROM Microdisc
+             * en $E000 via EPROM=0. Hardcoder basic_rom_disabled=true bloquait
+             * Sedoric stage 2 (boucle $04F7 → JSR vers RAM noise). */
+            bool romdis = (value & 0x02) == 0;
             uint8_t newdrv = (uint8_t)((value & LOCI_DSK_CTRL_DRV_SEL_MASK)
                                        >> LOCI_DSK_CTRL_DRV_SEL_SHIFT);
             loci->dsk_fdc.side = side;
@@ -1925,11 +1943,8 @@ void loci_dsk_write(loci_t* loci, uint16_t address, uint8_t value) {
                 loci->dsk_selected = newdrv;
                 loci_apply_dsk_selection(loci);
             }
-            /* Sync overlay seulement (EPROM bit). basic_rom_disabled reste
-             * persistant à true depuis le rom_swap_cb (sinon le ROM
-             * Microdisc en cours d'exécution disparaît du mapping). */
             if (loci->dsk_sync_overlay) {
-                loci->dsk_sync_overlay(loci->dsk_bus_ctx, true, diskrom);
+                loci->dsk_sync_overlay(loci->dsk_bus_ctx, romdis, diskrom);
             }
             /* INTENA + INTRQ active → assert CPU IRQ ; sinon clear. */
             if (loci->dsk_intena && loci->dsk_intrq == 0x00) {

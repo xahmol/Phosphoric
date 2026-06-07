@@ -296,6 +296,105 @@ TEST(fopen_bad_handle_close) {
     loci_sdimg_close(img);
 }
 
+/* ─── MBR-wrapped image (Sprint 34as) ────────────────────────────── */
+
+#define MBR_PARTITION_LBA 2048   /* common 1 MB alignment */
+
+/* Create a copy of the FAT16 fixture but with a sector-0 MBR pointing
+ * to the partition at LBA 2048. The BPB+FATs+root+data are shifted by
+ * 2048 sectors. Returns the new path. */
+static char g_mbr_path[256] = {0};
+
+static const char* create_mbr_wrapped_image(void) {
+    snprintf(g_mbr_path, sizeof(g_mbr_path),
+             "/tmp/loci_sdimg_mbr_%d.img", (int)getpid());
+
+    /* Read the existing flat fixture. */
+    FILE* src = fopen(g_img_path, "rb");
+    if (!src) return NULL;
+    fseek(src, 0, SEEK_END);
+    long src_sz = ftell(src);
+    fseek(src, 0, SEEK_SET);
+    uint8_t* fixture = malloc((size_t)src_sz);
+    if (!fixture || fread(fixture, 1, (size_t)src_sz, src) != (size_t)src_sz) {
+        fclose(src); free(fixture); return NULL;
+    }
+    fclose(src);
+
+    FILE* dst = fopen(g_mbr_path, "wb");
+    if (!dst) { free(fixture); return NULL; }
+
+    /* Sector 0 = MBR. Bytes 0-445 = boot code (we use 0x00 dummy,
+     * starting with a non-jmp opcode so the parser doesn't misread
+     * as BPB). Partition entry 0 at offset 446. */
+    uint8_t mbr[BPS] = {0};
+    mbr[0] = 0x33;            /* XOR — not 0xEB / 0xE9, so MBR-ness wins */
+    uint8_t* pe = mbr + 446;
+    pe[0]  = 0x80;            /* bootable flag */
+    pe[1]  = 0x01; pe[2] = 0x01; pe[3] = 0x00;  /* CHS first (dummy) */
+    pe[4]  = 0x06;            /* type 06 = FAT16 ≥ 32 MB */
+    pe[5]  = 0xFE; pe[6] = 0xFF; pe[7] = 0xFF;  /* CHS last (dummy) */
+    put_u32(pe + 8,  MBR_PARTITION_LBA);          /* LBA first */
+    put_u32(pe + 12, (uint32_t)(src_sz / BPS));   /* sector count */
+    mbr[510] = 0x55; mbr[511] = 0xAA;
+    fwrite(mbr, 1, BPS, dst);
+
+    /* Sectors 1 .. 2047 = filler (zero). */
+    uint8_t zero[BPS] = {0};
+    for (uint32_t s = 1; s < MBR_PARTITION_LBA; s++) {
+        fwrite(zero, 1, BPS, dst);
+    }
+
+    /* Sector 2048 onwards = the original superfloppy fixture. */
+    fwrite(fixture, 1, (size_t)src_sz, dst);
+    fclose(dst);
+    free(fixture);
+    return g_mbr_path;
+}
+
+static void cleanup_mbr_image(void) {
+    if (g_mbr_path[0]) unlink(g_mbr_path);
+}
+
+TEST(mbr_open_detects_partition) {
+    const char* p = create_mbr_wrapped_image();
+    ASSERT_TRUE(p != NULL);
+    loci_sdimg_t* img = loci_sdimg_open(p);
+    ASSERT_TRUE(img != NULL);
+    ASSERT_TRUE(strcmp(loci_sdimg_fs_label(img), "FAT16") == 0);
+    loci_sdimg_close(img);
+    cleanup_mbr_image();
+}
+
+TEST(mbr_lists_root_same_as_flat) {
+    const char* p = create_mbr_wrapped_image();
+    loci_sdimg_t* img = loci_sdimg_open(p);
+    int dh = loci_sdimg_opendir(img, "");
+    char name[64]; uint8_t attrib; uint32_t size;
+    int found_hello = 0, found_sub = 0;
+    while (loci_sdimg_readdir(img, dh, name, &attrib, &size) == 1) {
+        if (strcmp(name, "HELLO.TXT") == 0) found_hello = 1;
+        if (strcmp(name, "SUB") == 0)       found_sub = 1;
+    }
+    ASSERT_TRUE(found_hello && found_sub);
+    loci_sdimg_closedir(img, dh);
+    loci_sdimg_close(img);
+    cleanup_mbr_image();
+}
+
+TEST(mbr_read_file_via_partition) {
+    const char* p = create_mbr_wrapped_image();
+    loci_sdimg_t* img = loci_sdimg_open(p);
+    int fd = loci_sdimg_fopen(img, "HELLO.TXT");
+    ASSERT_TRUE(fd >= 0);
+    char buf[16] = {0};
+    int br = loci_sdimg_fread(img, fd, buf, 13);
+    ASSERT_EQ(br, 13);
+    ASSERT_TRUE(memcmp(buf, "Hello, LOCI!\n", 13) == 0);
+    loci_sdimg_close(img);
+    cleanup_mbr_image();
+}
+
 int main(void) {
     printf("\n=== LOCI SD raw image backend tests (Sprint 34ao) ===\n");
 
@@ -316,6 +415,9 @@ int main(void) {
     RUN(lseek_set_cur_end);
     RUN(opendir_subdir_lists_inside);
     RUN(fopen_bad_handle_close);
+    RUN(mbr_open_detects_partition);
+    RUN(mbr_lists_root_same_as_flat);
+    RUN(mbr_read_file_via_partition);
 
     cleanup_test_image();
 

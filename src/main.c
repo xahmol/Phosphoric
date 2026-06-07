@@ -150,6 +150,8 @@ static const rom_patches_t rom_patches_basic10 = {
     .readbyte_store    = 0x002F,
     .readbyte_storezero= 0,         /* GetTapeByte on Oric-1 does not maintain $02B1 */
     .readbyte_setcarry = false,     /* and exits with C=0 */
+    .csave_header_buf  = 0,         /* TODO : ORIC-1 CSAVE header path not researched yet */
+    .csave_filename_buf= 0x0035,    /* legacy : keep current behaviour for BASIC 1.0 */
     .cload_data_rts    = 0xE502,
     .putbyte_entry     = 0xE5C6,
     .putbyte_end       = 0xE5F2,
@@ -168,6 +170,9 @@ static const rom_patches_t rom_patches_basic11 = {
     .readbyte_store    = 0x002F,
     .readbyte_storezero= 0x02B1,    /* Atmos GetTapeByte zeroes the parity accumulator */
     .readbyte_setcarry = true,      /* and exits with C=1 — VERIFY logic relies on both */
+    .csave_header_buf  = 0x02A8,    /* Atmos WriteFileHeader staging : $02A8..$02B0 (reversed
+                                      * on-tape order, see disasm at $E60F-$E618) */
+    .csave_filename_buf= 0x027F,    /* Atmos filename buffer (16 chars, null-terminated) */
     .cload_data_rts    = 0xE50A,
     .putbyte_entry     = 0xE65E,
     .putbyte_end       = 0xE68A,
@@ -1000,36 +1005,65 @@ do_patch:
         emu->csave_byte_count++;
         emu->cpu.PC = p->putbyte_end;
     } else if (pc == p->csave_end) {
-        /* CSAVE complete — rebuild the TAP from BASIC RAM (Sprint 34aq).
+        /* CSAVE complete — rebuild the TAP (Sprint 34as).
          *
-         * Capturing bytes via putbyte_entry produced an unreliable TAP
-         * (header layout depended on undocumented ROM behaviour). We
-         * instead reconstruct a canonical Oric TAP from the BASIC RAM
-         * state at csave_end: TXTTAB ($9A/$9B) and VARTAB ($9C/$9D)
-         * give us start/end addresses, the program data is in RAM, and
-         * the filename was already captured at writeleader_entry. */
+         * Sourcing priority :
+         *  1. If p->csave_header_buf is set (Atmos), read the 9-byte
+         *     header staging buffer the ROM populated before WriteFileHeader.
+         *     This buffer is CSAVE-variant-agnostic : works for BASIC
+         *     programs AND machine-code (`,A start,E end`) without any
+         *     special-casing.
+         *  2. Fallback (BASIC 1.0 for now) : TXTTAB/VARTAB pointers in
+         *     zero-page. Works for BASIC programs only.
+         *
+         * The header buffer layout (Atmos, memory address → tape byte) :
+         *   $02A8 → byte 9 (null sep)
+         *   $02A9 → byte 8 (start_lo)
+         *   $02AA → byte 7 (start_hi)
+         *   $02AB → byte 6 (end_lo)
+         *   $02AC → byte 5 (end_hi)
+         *   $02AD → byte 4 (auto-flag, $C7)
+         *   $02AE → byte 3 (type, $00=BASIC)
+         *   $02AF → byte 2 (padding)
+         *   $02B0 → byte 1 (padding)
+         * Tape order is the buffer read in reverse (X=9 down to X=1).
+         */
         if (emu->csave_file) {
             fclose(emu->csave_file);
             emu->csave_file = NULL;
             emu->csave_byte_count = 0;
         }
 
-        uint16_t start_addr =
-            (uint16_t)(emu->memory.ram[0x9A] | (emu->memory.ram[0x9B] << 8));
-        uint16_t end_addr =
-            (uint16_t)(emu->memory.ram[0x9C] | (emu->memory.ram[0x9D] << 8));
-        /* VARTAB points to first byte AFTER program → subtract 1 for
-         * the inclusive end address used in the TAP header. */
-        if (end_addr > start_addr) end_addr--;
+        uint16_t start_addr, end_addr;
+        uint8_t  header_type, header_auto;
+        if (p->csave_header_buf) {
+            uint16_t b = p->csave_header_buf;
+            start_addr  = (uint16_t)(emu->memory.ram[b + 1] |
+                                     (emu->memory.ram[b + 2] << 8));
+            end_addr    = (uint16_t)(emu->memory.ram[b + 3] |
+                                     (emu->memory.ram[b + 4] << 8));
+            header_auto = emu->memory.ram[b + 5];
+            header_type = emu->memory.ram[b + 6];
+        } else {
+            /* Legacy fallback : TXTTAB / VARTAB. */
+            start_addr =
+                (uint16_t)(emu->memory.ram[0x9A] | (emu->memory.ram[0x9B] << 8));
+            end_addr =
+                (uint16_t)(emu->memory.ram[0x9C] | (emu->memory.ram[0x9D] << 8));
+            /* VARTAB points to first byte AFTER program → subtract 1. */
+            if (end_addr > start_addr) end_addr--;
+            header_auto = 0xC7;
+            header_type = 0x00;
+        }
         int prog_len = (int)end_addr - (int)start_addr + 1;
         if (prog_len < 0) prog_len = 0;
 
-        /* Sanitize the BASIC filename (it can contain leading length
-         * bytes / quotes from the BASIC tokenizer). */
+        /* Sanitize the filename from the ROM's CSAVE buffer. */
+        uint16_t fn_addr = p->csave_filename_buf ? p->csave_filename_buf : 0x0035;
         char clean_name[12] = {0};
         int ci = 0;
         for (int i = 0; i < 16 && ci < 11; i++) {
-            unsigned char c = emu->memory.ram[0x0035 + i];
+            unsigned char c = emu->memory.ram[fn_addr + i];
             if (c == 0) break;
             if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
             if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
@@ -1051,8 +1085,8 @@ do_patch:
             tap[t++] = 0x16; tap[t++] = 0x16; tap[t++] = 0x16;
             tap[t++] = 0x24;
             tap[t++] = 0x00; tap[t++] = 0x00;                    /* 2 padding */
-            tap[t++] = 0x00;                                     /* type: program */
-            tap[t++] = 0xC7;                                     /* auto-run */
+            tap[t++] = header_type;                              /* $00=BASIC, $80=array, $C0=string, ... */
+            tap[t++] = header_auto;                              /* $C7 auto-run usually */
             tap[t++] = (uint8_t)(end_addr >> 8);
             tap[t++] = (uint8_t)(end_addr & 0xFF);
             tap[t++] = (uint8_t)(start_addr >> 8);

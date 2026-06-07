@@ -54,6 +54,11 @@ struct loci_sdimg_s {
     sdimg_fs_t fs_kind;
     uint32_t   total_size;
     bool       read_only;
+    /* Sprint 34as : LBA of the partition this image actually mounts. 0
+     * for superfloppy images ; non-zero when sector 0 is an MBR and we
+     * picked the first valid partition. read_sector / write_sector add
+     * this to every LBA so the rest of the code stays partition-agnostic. */
+    uint32_t   partition_lba;
 
     /* BPB-derived */
     uint16_t bytes_per_sector;
@@ -80,7 +85,8 @@ struct loci_sdimg_s {
 /* ─── low-level I/O ──────────────────────────────────────────────── */
 
 static bool read_sector(loci_sdimg_t* img, uint32_t lba, uint8_t* out) {
-    if (fseek(img->fp, (long)lba * img->bytes_per_sector, SEEK_SET) != 0) return false;
+    uint64_t off = (uint64_t)(lba + img->partition_lba) * img->bytes_per_sector;
+    if (fseek(img->fp, (long)off, SEEK_SET) != 0) return false;
     size_t n = fread(out, 1, img->bytes_per_sector, img->fp);
     return n == img->bytes_per_sector;
 }
@@ -116,12 +122,63 @@ static uint32_t cluster_first_sector(const loci_sdimg_t* img, uint32_t cluster) 
     return img->data_start_sector + (cluster - 2) * img->sectors_per_cluster;
 }
 
+/* ─── MBR detection (Sprint 34as) ──────────────────────────────────
+ *
+ * A sector-0 buffer is treated as an MBR (not a BPB) when:
+ *   - bytes 510-511 = 0x55 0xAA (boot signature)
+ *   - byte 0 is NOT a valid BPB jmp (0xEB / 0xE9), OR the BPB
+ *     bytes_per_sector (offset 11-12) is not a recognised power of two
+ *
+ * If MBR, the 4 partition entries at offset 446-509 are scanned and we
+ * pick the first one with a recognised FAT type code and a non-zero
+ * LBA start. */
+static uint32_t mbr_detect_partition_lba(const uint8_t* sec0) {
+    if (sec0[510] != 0x55 || sec0[511] != 0xAA) return 0;
+
+    uint8_t  jmp = sec0[0];
+    uint16_t bps = (uint16_t)sec0[11] | ((uint16_t)sec0[12] << 8);
+    bool plausible_bpb = (jmp == 0xEB || jmp == 0xE9) &&
+                         (bps == 512 || bps == 1024 ||
+                          bps == 2048 || bps == 4096);
+    if (plausible_bpb) return 0;
+
+    for (int i = 0; i < 4; i++) {
+        const uint8_t* p = sec0 + 446 + i * 16;
+        uint8_t type = p[4];
+        /* Recognised FAT partition types : FAT12 (01), FAT16 (04/06/0E),
+         * FAT32 (0B/0C), hidden FAT16/32 (1B/1C). */
+        if (type == 0x01 || type == 0x04 || type == 0x06 || type == 0x0B ||
+            type == 0x0C || type == 0x0E || type == 0x1B || type == 0x1C) {
+            uint32_t lba = (uint32_t)p[8]        |
+                           ((uint32_t)p[9]  << 8)  |
+                           ((uint32_t)p[10] << 16) |
+                           ((uint32_t)p[11] << 24);
+            if (lba > 0) return lba;
+        }
+    }
+    return 0;
+}
+
 /* ─── BPB parsing ────────────────────────────────────────────────── */
 
 static bool parse_bpb(loci_sdimg_t* img) {
     uint8_t sec[SDIMG_SECTOR_MAX];
+    /* Bootstrap : we don't know bytes_per_sector yet — use plain
+     * fseek+fread to inspect raw sector 0 (no partition_lba shift). */
     if (fseek(img->fp, 0, SEEK_SET) != 0) return false;
     if (fread(sec, 1, SDIMG_SECTOR_MAX, img->fp) != SDIMG_SECTOR_MAX) return false;
+
+    uint32_t plba = mbr_detect_partition_lba(sec);
+    if (plba > 0) {
+        img->partition_lba = plba;
+        /* Re-read the BPB from the partition's first sector (still raw
+         * fseek — read_sector now adds partition_lba but we want the
+         * partition's sector 0 = our LBA 0). */
+        if (fseek(img->fp, (long)plba * SDIMG_SECTOR_MAX, SEEK_SET) != 0)
+            return false;
+        if (fread(sec, 1, SDIMG_SECTOR_MAX, img->fp) != SDIMG_SECTOR_MAX)
+            return false;
+    }
 
     img->bytes_per_sector    = rd_u16(sec + 11);
     img->sectors_per_cluster = sec[13];
@@ -345,7 +402,8 @@ static void wr_u32(uint8_t* p, uint32_t v) {
 
 static bool write_sector(loci_sdimg_t* img, uint32_t lba, const uint8_t* in) {
     if (img->read_only) { errno = EROFS; return false; }
-    if (fseek(img->fp, (long)lba * img->bytes_per_sector, SEEK_SET) != 0) return false;
+    uint64_t off = (uint64_t)(lba + img->partition_lba) * img->bytes_per_sector;
+    if (fseek(img->fp, (long)off, SEEK_SET) != 0) return false;
     size_t n = fwrite(in, 1, img->bytes_per_sector, img->fp);
     return n == img->bytes_per_sector;
 }

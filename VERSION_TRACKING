@@ -1,12 +1,21 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.44-alpha
+Current Version: 1.16.45-alpha
 Release Date: 2026-06-07
-Status: Alpha (Sprint 34ar review sénior — Errors found éliminé + fd_kind + mkstemp)
+Status: Alpha (Sprint 34as — MBR parser + CSAVE staging buffer source)
 
 Version History:
 ----------------
+- 1.16.45-alpha (2026-06-07): Sprint 34as — follow-up review sénior
+  * MBR parser auto-detect (FAT16/32 partition LBA propagé)
+  * 3 tests MBR (open / list / read identiques au superfloppy)
+  * CSAVE source les params depuis le header staging buffer Atmos
+    ($02A8..$02B0, désasm $E60F-$E618) — subsume machine-code CSAVE
+  * Auto-flag/type byte réels respectés (plus de C7 forcé)
+  * BASIC 1.0 (ORIC-1) CSAVE : limitation csave_end pas tiré (pré-existante)
+  * 473 tests pass (470 + 3 MBR), 0 régression
+
 - 1.16.44-alpha (2026-06-07): Sprint 34ar — review ingé sénior
   * Errors found éliminé : $02B1 storezero + SEC version-specific
     (BASIC 1.1 Atmos seul, fields readbyte_storezero/setcarry dans

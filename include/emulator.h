@@ -35,7 +35,7 @@
 #include "io/loci.h"
 #include "network/cast_server.h"
 
-#define EMU_VERSION "1.16.44-alpha"
+#define EMU_VERSION "1.16.45-alpha"
 
 /**
  * @brief ORIC machine model
@@ -64,6 +64,15 @@ typedef struct rom_patches_s {
                                   *  Atmos: $02B1 (tape parity accumulator). */
     bool     readbyte_setcarry; /**< true if real GetTapeByte returns with C=1.
                                   *  Atmos: true ; ORIC-1: false. */
+    uint16_t csave_header_buf;  /**< Base of 9-byte header staging buffer the
+                                  *  ROM populates before WriteFileHeader.
+                                  *  CSAVE-variant-agnostic source of truth.
+                                  *  Atmos: $02A8 (read $02B0 down to $02A8
+                                  *  for on-tape byte order). 0 = unknown,
+                                  *  fall back to TXTTAB/VARTAB. */
+    uint16_t csave_filename_buf;/**< Base of filename buffer the ROM uses
+                                  *  during CSAVE. Atmos: $027F.
+                                  *  ORIC-1: $0035 (legacy). */
     uint16_t cload_data_rts;    /**< CLOAD data loop RTS (triggers post-load rechain) */
     uint16_t putbyte_entry;     /**< putbyte() entry point (CSAVE) */
     uint16_t putbyte_end;       /**< putbyte() RTS address */

@@ -5,6 +5,102 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.45-alpha] - 2026-06-07
+
+### Sprint 34as — Suggestions sénior follow-up : MBR + CSAVE header source
+
+Donne suite aux deux propositions du sénior dans la review v1.16.44.
+
+#### Added — MBR parser (~50 LOC)
+
+Détection automatique au `loci_sdimg_open` :
+- Si secteur 0 finit par `55 AA` ET ne ressemble PAS à un BPB valide
+  (premier byte n'est pas `EB`/`E9` ou `bytes_per_sector` aberrant),
+  on traite comme MBR.
+- Scan des 4 entries à offset 446 ; on prend la première avec un FAT
+  type connu (01/04/06/0B/0C/0E/1B/1C) et LBA > 0.
+- `loci_sdimg_t.partition_lba` propagé dans `read_sector` /
+  `write_sector` — tout le reste du code (BPB, FAT, dir walker) reste
+  partition-agnostic.
+
+→ Permet d'ouvrir directement un dump `dd if=/dev/sdX` d'une vraie
+microSD LOCI sans extraction préalable.
+
+#### Added — Tests MBR (3 nouveaux)
+
+- `mbr_open_detects_partition` : ouvre image MBR + verify FS label
+- `mbr_lists_root_same_as_flat` : OPENDIR/READDIR identique au superfloppy
+- `mbr_read_file_via_partition` : FREAD avec partition_lba shift
+
+Pattern : on prend la fixture FAT16 existante, on l'enveloppe d'un MBR
++ filler jusqu'au LBA de partition (2048 = 1 MB alignment standard) et
+on valide que toutes les ops marchent à l'identique.
+
+#### Changed — CSAVE source les params depuis le header staging buffer
+
+Suggestion du sénior : "prends start/end/type/autorun depuis les
+paramètres que la ROM a déjà calculés, pas depuis les données".
+Désassemblée Atmos confirme :
+
+```
+$E607  WriteFileHeader:
+       JSR  WriteLeader
+       LDA  #$24
+       JSR  PutByte                ; sync byte
+       LDX  #$09
+$E611: LDA  $02A7,X                ; ← buffer $02A8..$02B0
+       JSR  PutByte
+       DEX
+       BNE  $E611
+```
+
+Mapping mémoire → tape (X=9..1) :
+
+| Adresse | Byte tape | Sens |
+|---------|-----------|------|
+| `$02B0` | #1 | padding |
+| `$02AF` | #2 | padding |
+| `$02AE` | #3 | type (0x00=BASIC, 0x80=array, 0xC0=string) |
+| `$02AD` | #4 | auto-flag (0xC7 si autorun, 0x00 sinon) |
+| `$02AC` | #5 | end_hi |
+| `$02AB` | #6 | end_lo |
+| `$02AA` | #7 | start_hi |
+| `$02A9` | #8 | start_lo |
+| `$02A8` | #9 | null sep |
+
+Avantages vs TXTTAB/VARTAB :
+- Subsume BASIC + machine-code CSAVE (`,A start,E end`) sans casse
+- Auto-flag réel respecté (0x00 quand l'utilisateur n'a pas demandé)
+- type byte réel (BASIC/array/string distincts si CSAVE typé)
+
+Implémentation data-driven via `rom_patches_t` :
+```c
+uint16_t csave_header_buf;   /* Atmos: $02A8 ; ORIC-1: 0 = fallback */
+uint16_t csave_filename_buf; /* Atmos: $027F ; ORIC-1: $0035 */
+```
+
+Fallback TXTTAB/VARTAB préservé pour ORIC-1 (BASIC 1.0) tant qu'on
+n'a pas désassemblé son équivalent.
+
+#### Validation
+
+- Round-trip Atmos `CSAVE "T1"` → `NEW` → `CLOAD "T1"` → `LIST` :
+  programme chargé correctement, **plus de "Errors found"** (héritage
+  v1.16.44), TAP layout `00 00 00 00 0E 05 01 00 ...` (header sourced
+  depuis le buffer réel — auto-flag=00 conforme au "CSAVE sans option")
+- 473 tests pass (470 + 3 MBR), 0 régression
+- AIGLE.TAP toujours OK
+
+#### Limitations restantes
+
+- **ORIC-1 (BASIC 1.0) CSAVE round-trip** : `csave_end` n'est pas tiré
+  dans la chaîne actuelle (pré-existant à 34as, séparé du périmètre).
+  À investiguer sprint 34at.
+- **`/tmp/loci_extract_*` cleanup atexit** : encore TODO, fuite tmp
+  files possible en cas de quit brutal (`SIGTERM`).
+
+---
+
 ## [1.16.44-alpha] - 2026-06-07
 
 ### Sprint 34ar — Review ingé sénior : 3 fixes + cleanup compensations

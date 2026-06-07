@@ -539,6 +539,19 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34as: Follow-up review sénior — MBR + CSAVE staging buffer (v1.16.45-alpha) - DONE
+- [x] MBR parser : détection auto, partition_lba propagé via read/write_sector
+- [x] Types FAT supportés : 01/04/06/0B/0C/0E/1B/1C
+- [x] 3 tests MBR (open, list, read par partition)
+- [x] CSAVE Atmos source les params depuis $02A8..$02B0 (staging buffer)
+- [x] Désassemblée $E60F-$E618 décodée (LDX#9 ; LDA $02A7,X ; DEX ; BNE)
+- [x] csave_header_buf + csave_filename_buf dans rom_patches_t (Atmos)
+- [x] Auto-flag et type byte réels (plus de C7/00 forcé)
+- [x] BASIC 1.0 reste sur fallback TXTTAB/VARTAB (csave_end ORIC-1 broken
+      séparément — sprint 34at)
+- [x] 473 tests pass (470 + 3 MBR), 0 régression
+- [x] AIGLE.TAP régression OK
+
 ### Sprint 34ar: Review ingé sénior — 3 fixes + cleanup (v1.16.44-alpha) - DONE
 - [x] Diagnostic "Errors found" craqué par ingé sénior :
   - [x] $02B1 storezero (Atmos seulement) — parity accumulator

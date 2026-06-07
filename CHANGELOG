@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.48-alpha] - 2026-06-07
+
+### Sprint 34av — Automatisation E2E LOCI : ESC matrix + mode HID
+
+#### Added — `\e` (ESC) dans `oric_keyboard_press_char`
+
+L'ESC ORIC est à col=1, row=5 dans la matrice. Permet l'usage de
+`\e` dans `--type-keys` pour naviguer le TUI LOCI.
+
+#### Added — `\e` dans `--type-keys` mode matrix (debounce 4 frames)
+
+#### Added — Mode `loci-hid:` dans `--type-keys` (défensif)
+
+Préfixe `loci-hid:` route via la bitmap HID xram. Échappes : `\n` `\e`
+`\u` `\d` `\l` `\r` `\pN` + a-z, 0-9, A-Z (shift). Utile pour futurs ROMs.
+
+#### Découverte
+
+La ROM LOCI 0.3.0 actuelle scanne la matrice ORIC (PSG R14 + VIA PB),
+**pas** la bitmap HID xram. Le mode matrix avec `\e` couvre l'usage actuel.
+
+#### Validation E2E
+
+```bash
+./oric1-emu -r roms/loci/locirom --loci --loci-sdimg loci_demo.img \
+    --type-keys '15000000:\p3\e\p8\p110 PRINT "ALL GOOD"\n\p2RUN\n\p2'
+```
+
+→ LOCI ROM → ESC → MIA_BOOT → SDIMG extract → BASIC 1.1 → typed program
+→ RUN → "ALL GOOD" affiché. **Premier E2E LOCI complet automatisé.**
+
+---
+
 ## [1.16.47-alpha] - 2026-06-07
 
 ### Sprint 34au — Implémentation des 7 ops LOCI stubbées

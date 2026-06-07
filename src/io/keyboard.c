@@ -149,11 +149,16 @@ bool oric_keyboard_press_char(oric_keyboard_t* kb, char c) {
         return true;
     }
     if (c == 0x1B) {
-        /* Sprint 34av : ESC key (Oric matrix col=1, row=5). Pressé via
-         * --type-keys '\e' notamment pour naviguer le TUI LOCI. */
+        /* Sprint 34av : ESC key (Oric matrix col=1, row=5). */
         kb->matrix[1] &= ~(1 << 5);
         return true;
     }
+    /* Sprint 34av : arrow keys (col=4 partagée). Sentinelles internes
+     * (au-dessus de 0x7F = pas de char-mapping conflict). */
+    if (c == (char)0x80) { kb->matrix[4] &= ~(1 << 3); return true; } /* UP */
+    if (c == (char)0x81) { kb->matrix[4] &= ~(1 << 6); return true; } /* DOWN */
+    if (c == (char)0x82) { kb->matrix[4] &= ~(1 << 5); return true; } /* LEFT */
+    if (c == (char)0x83) { kb->matrix[4] &= ~(1 << 7); return true; } /* RIGHT */
     unsigned char uc = (unsigned char)c;
     if (uc > 127) return false;
     const char_entry_t* entry = &char_map[uc];

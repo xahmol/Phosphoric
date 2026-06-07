@@ -539,6 +539,15 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34av: Automatisation E2E LOCI (v1.16.48-alpha) - DONE
+- [x] \e (ESC) ajouté à oric_keyboard_press_char (col=1, row=5)
+- [x] Flèches \u \d \l \r (col=4, rows 3/6/5/7) via sentinelles 0x80-0x83
+- [x] \e + \u/d/l/r parsers dans --type-keys mode matrix
+- [x] Mode loci-hid: dans --type-keys (préfixe + HID xram)
+- [x] E2E test : boot LOCI → ESC → BASIC 1.1 → PRINT/RUN automatisés
+- [x] Navigation TUI partielle (sélection picker = SPACE, à itérer)
+- [x] 481 tests pass, 0 régression
+
 ### Sprint 34au: Impl 7 ops LOCI stubbées (v1.16.47-alpha) - DONE
 - [x] op_cpu_phi2 retourne 1 MHz dans AXSREG
 - [x] op_oem_codepage no-op success

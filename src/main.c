@@ -1531,6 +1531,27 @@ static void emulator_run(emulator_t* emu) {
                         emu->type_keys_idx += 2;
                         emu->type_keys_next_cycle = (int64_t)total_executed + CYCLES_PER_FRAME * 4;
                     }
+                } else if (c == '\\' && (emu->type_keys_text[idx+1] == 'u' ||
+                                          emu->type_keys_text[idx+1] == 'd' ||
+                                          emu->type_keys_text[idx+1] == 'l' ||
+                                          emu->type_keys_text[idx+1] == 'r')) {
+                    /* Sprint 34av : flèches pour navigation TUI LOCI. */
+                    char dir = emu->type_keys_text[idx+1];
+                    char arrow = (dir == 'u') ? (char)0x80
+                              : (dir == 'd') ? (char)0x81
+                              : (dir == 'l') ? (char)0x82
+                              : (char)0x83;  /* r */
+                    if (emu->type_keys_last_char == arrow) {
+                        oric_keyboard_release_all(&emu->keyboard);
+                        emu->type_keys_last_char = 0;
+                        emu->type_keys_next_cycle = (int64_t)total_executed + CYCLES_PER_FRAME;
+                    } else {
+                        oric_keyboard_release_all(&emu->keyboard);
+                        oric_keyboard_press_char(&emu->keyboard, arrow);
+                        emu->type_keys_last_char = arrow;
+                        emu->type_keys_idx += 2;
+                        emu->type_keys_next_cycle = (int64_t)total_executed + CYCLES_PER_FRAME * 4;
+                    }
                 } else if (c == '\\' && emu->type_keys_text[idx+1] == 'p') {
                     /* \pN = pause N seconds (N = single digit) */
                     int secs = emu->type_keys_text[idx+2] - '0';

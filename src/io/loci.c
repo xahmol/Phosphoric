@@ -1783,11 +1783,23 @@ static void loci_fdc_clr_drq(void* userdata) {
 }
 static void loci_fdc_set_intrq(void* userdata) {
     loci_t* l = (loci_t*)userdata;
-    if (l) l->dsk_intrq = 0x00;
+    if (!l) return;
+    l->dsk_intrq = 0x00;
+    /* 34ay : si INTENA déjà actif quand le FDC fire INTRQ, assert CPU
+     * IRQ aussi — pas uniquement sur CTRL write. Sinon le Microdisc
+     * ROM polls infiniment STATUS sans recevoir d'IRQ. */
+    if (l->dsk_intena && l->dsk_cpu_irq_set) {
+        l->dsk_cpu_irq_set(l->dsk_bus_ctx);
+    }
 }
 static void loci_fdc_clr_intrq(void* userdata) {
     loci_t* l = (loci_t*)userdata;
-    if (l) l->dsk_intrq = 0x80;
+    if (!l) return;
+    l->dsk_intrq = 0x80;
+    /* Clear CPU IRQ aussi (cohérent level-triggered). */
+    if (l->dsk_cpu_irq_clr) {
+        l->dsk_cpu_irq_clr(l->dsk_bus_ctx);
+    }
 }
 
 /* ─── DSK WD1793 cycle-accurate (Sprint 34aw) ──────────────────────

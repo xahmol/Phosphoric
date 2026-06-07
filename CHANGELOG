@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.53-alpha] - 2026-06-07
+
+### Sprint 34ay — WD1793 INTRQ asynchrone (boot Sedoric atteint stage 1)
+
+#### Fixed
+
+- **`loci_fdc_set_intrq()`** : déclenche maintenant `cpu_irq_set(IRQF_DISK)`
+  quand le FDC fire INTRQ pendant que INTENA est déjà actif (et pas
+  uniquement lors d'un CTRL write). Le Microdisc ROM, qui poll $0314
+  en attendant la complétion de Restore/Read Sector, reçoit enfin le
+  signal IRQ asynchrone qui débloque la traversée vers le boot loader.
+- **`loci_fdc_clr_intrq()`** : clear CPU IRQ symétrique (cohérent
+  level-triggered IRQF_DISK).
+
+#### Status — Boot Sedoric via LOCI
+
+- E2E : pipeline atteint **PC=$04F7 en RAM** après chargement du boot
+  sector (« Booting. » s'affiche sur l'écran texte $BB80). Le contrôle
+  est transféré du ROM Microdisc au loader Sedoric V4.0 chargé en RAM.
+- WIP : Sedoric loader bloque ensuite (probable second sector read non
+  traversé). À investiger : Read Multiple ou problème de DRQ pacing.
+
+#### Tests
+
+- 484 tests, tous PASS.
+
 ## [1.16.52-alpha] - 2026-06-07
 
 ### Sprint 34ax — CTRL semantics + DSK bus callbacks LOCI

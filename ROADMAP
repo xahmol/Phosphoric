@@ -773,6 +773,13 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] STAT reporte NOT_READY si pas de tape
 - [x] 10 nouveaux tests test-loci
 
+### Sprint 34b2: Sedoric SAVE/NEW/LOAD round-trip via LOCI (v1.16.57-alpha) - DONE
+- [x] `SAVE"TEST.BAS"` → Sedoric écrit programme + entrée directory via WD1793 Write Sector LOCI
+- [x] `NEW` puis `LOAD"TEST.BAS"` → programme rechargé depuis disque virtuel
+- [x] Test différentiel native vs LOCI : BASIC text `$0500-$053F` byte-identique
+- [x] Premier test write WD1793 LOCI (jusqu'ici seules les lectures étaient validées)
+- [x] 484 tests PASS (aucune modif code source)
+
 ### Sprint 34b1: Sedoric DIR + LOAD"MENU.COM" via LOCI (v1.16.56-alpha) - DONE
 - [x] BASIC + `DIR` : catalogue Sedoric affiché (12 entrées, 94 fichiers, 1447 secteurs libres)
 - [x] `LOAD"MENU.COM"` : programme machine Sedoric chargé + exécuté → menu anglais affiché

@@ -5,6 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.57-alpha] - 2026-06-07
+
+### Sprint 34b2 — Sedoric SAVE / NEW / LOAD round-trip via LOCI
+
+#### Validation E2E
+
+À partir du BASIC Sedoric (boot via LOCI puis Return), séquence :
+
+```
+10 PRINT"HELLO LOCI"
+SAVE"TEST.BAS"
+NEW
+LOAD"TEST.BAS"
+```
+
+Au cycle 119M, dump RAM :
+- Zone BASIC text `$0500-$053F` (line link + line# + tokens + chaîne
+  + terminateur) **strictement byte-identique** entre boot natif
+  Microdisc et boot LOCI.
+- Le programme survit à `NEW` (qui efface la mémoire) puis à `LOAD`
+  qui le recharge depuis le disque virtuel.
+
+#### Ce que valide ce sprint
+
+C'est le premier test **write** du pipe LOCI WD1793 jusqu'ici uniquement
+exercé en lecture (34b0, 34b1) :
+- `SAVE"TEST.BAS"` → Sedoric écrit le programme + entrée directory via
+  Write Sector WD1793 LOCI → image disque (RAM `fdc_t`).
+- `LOAD"TEST.BAS"` → Sedoric trouve l'entrée directory puis lit les
+  secteurs data via Read Sector WD1793 LOCI → mémoire BASIC.
+- Le programme rechargé est byte-identique au programme original.
+
+Le pipe LOCI WD1793 supporte donc bien le **round-trip write/read**
+in-session. (Persistance vers l'image SDIMG hors scope — les writes
+restent en mémoire `fdc_t`, comme pour le mode natif Microdisc.)
+
+#### Reproduction
+
+Native :
+```bash
+./oric1-emu -r roms/basic11b.rom --disk-rom roms/microdis.rom \
+    -d disks/SEDO40u.DSK --headless -c 80000000 \
+    --type-keys '35000000:\n\p310PRINT"HELLO LOCI"\n\p3SAVE"TEST.BAS"\n\p9\p3NEW\n\p2LOAD"TEST.BAS"\n\p9\p3LIST\n\p3' \
+    --dump-ram-at 79000000:/tmp/native_save.bin
+```
+
+Via LOCI :
+```bash
+./oric1-emu -r roms/loci/locirom --loci --loci-sdimg loci_demo.img \
+    --headless -c 120000000 \
+    --type-keys '15000000:\p3a\p2 \p2 \p2\e\p9\p9\p2\n\p310PRINT"HELLO LOCI"\n\p9\p3SAVE"TEST.BAS"\n\p9\p9\p9NEW\n\p3LOAD"TEST.BAS"\n\p9\p9\p9LIST\n\p9' \
+    --dump-ram-at 119000000:/tmp/loci_save2.bin
+```
+
+Validation : `diff <(xxd -s 0x500 -l 0x40 /tmp/native_save.bin) <(xxd -s 0x500 -l 0x40 /tmp/loci_save2.bin)`
+→ aucun diff.
+
+#### Tests
+
+- 484 tests, tous PASS — sprint de validation E2E pure, aucun changement
+  de code source.
+
+---
+
 ## [1.16.56-alpha] - 2026-06-07
 
 ### Sprint 34b1 — Sedoric DIR + LOAD"MENU.COM" via LOCI

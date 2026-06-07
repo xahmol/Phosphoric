@@ -706,6 +706,24 @@ static void microdisc_cpu_irq_clr(emulator_t* emu) {
     cpu_irq_clear(&emu->cpu, IRQF_DISK);
 }
 
+/* Sprint 34ax : LOCI DSK bus callbacks — réutilise IRQF_DISK level-triggered
+ * et synchronise overlay/ROMDIS dans le sous-système mémoire à chaque
+ * CTRL write. Sans ça le Microdisc ROM (sous LOCI MIA_BOOT FDC) reste
+ * bloqué après le RESTORE command — il attend l'IRQ et la commutation. */
+static void loci_dsk_cpu_irq_set(void* ctx) {
+    emulator_t* emu = (emulator_t*)ctx;
+    cpu_irq_set(&emu->cpu, IRQF_DISK);
+}
+static void loci_dsk_cpu_irq_clr(void* ctx) {
+    emulator_t* emu = (emulator_t*)ctx;
+    cpu_irq_clear(&emu->cpu, IRQF_DISK);
+}
+static void loci_dsk_sync_overlay(void* ctx, bool basic_disabled, bool overlay_active) {
+    emulator_t* emu = (emulator_t*)ctx;
+    emu->memory.basic_rom_disabled = basic_disabled;
+    emu->memory.overlay_active     = overlay_active;
+}
+
 /* ACIA 6551 serial IRQ callbacks */
 static void acia_cpu_irq_set(emulator_t* emu) {
     cpu_irq_set(&emu->cpu, IRQF_SERIAL);
@@ -2313,6 +2331,9 @@ int main(int argc, char* argv[]) {
         emu.has_loci = true;
         /* ROM-swap callback used by op 0xA0 MIA_BOOT (Sprint 34ad). */
         loci_set_rom_swap_callback(&emu.loci, loci_rom_swap_cb, &emu);
+        loci_set_dsk_bus_callbacks(&emu.loci, loci_dsk_cpu_irq_set,
+                                   loci_dsk_cpu_irq_clr,
+                                   loci_dsk_sync_overlay, &emu);
         /* Tape-mount callback used by op_mount on LOCI_MNT_TAP (Sprint 34ao). */
         loci_set_tape_mount_callback(&emu.loci, loci_tape_mount_cb, &emu);
         /* Action-button hooks (Sprint 34ai). */

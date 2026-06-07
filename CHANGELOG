@@ -5,6 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.52-alpha] - 2026-06-07
+
+### Sprint 34ax — CTRL semantics + DSK bus callbacks LOCI
+
+#### Added
+
+- **`loci_set_dsk_bus_callbacks()`** : API publique pour register les
+  3 callbacks que le LOCI a besoin pour driver le bus DSK :
+  - `cpu_irq_set(ctx)` / `cpu_irq_clr(ctx)` : LEVEL-triggered IRQF_DISK
+  - `sync_overlay(ctx, basic_disabled, overlay_active)` : commute la
+    visibilité ROM/overlay au gré des CTRL writes
+- Champs dans `loci_t` :
+  - `bool dsk_intena` — bit 0 de CTRL (IRQ enable)
+  - Pointeurs des 3 callbacks + `dsk_bus_ctx`
+
+#### Changed — `loci_dsk_write` CTRL ($0314)
+
+Implementation complète de la sémantique Microdisc :
+```
+bit 0 = INTENA (IRQ enable)
+bit 1 = ROMDIS (active-low, ignoré pour persistance)
+bit 3 = DENSITY (ignoré)
+bit 4 = SIDE (propagé vers fdc.side)
+bits 5-6 = DRIVE (apply_dsk_selection si change)
+bit 7 = EPROM (active-low, sync overlay_active)
+```
+
+**Note** : `basic_rom_disabled` est forcé à `true` persistant dans
+le sync_overlay callback. Sinon le Microdisc ROM en cours d'exécution
+au $E000+ disparaîtrait du mapping dès la première écriture CTRL
+(observable : régression vers "insert system disc"). À investiguer
+sprint 34ay pour suivre fidèlement la sémantique ROMDIS dynamique.
+
+#### Wiring main.c
+
+- `loci_dsk_cpu_irq_set/clr` : `cpu_irq_set(IRQF_DISK)` / clear
+- `loci_dsk_sync_overlay` : update `memory.basic_rom_disabled` +
+  `memory.overlay_active`
+- Registered au boot LOCI via `loci_set_dsk_bus_callbacks`
+
+#### État E2E Sedoric
+
+Atteint :
+- Microdisc ROM exécute, écrit CTRL multiples fois (sync overlay OK)
+- Force Interrupt + Restore + autres commandes WD1793 envoyées
+- IRQ status correctement lisible sur $0314
+- Écran "Booting." (stable, plus de "insert system disc")
+
+**Final CPU state** : PC=$E101, dans la microdis.rom — block sur
+boucle non identifiée. Sedoric ne charge toujours pas depuis le disque.
+
+#### Reste pour boot Sedoric complet
+
+- WD1793 INTRQ timing : restore doit fire INTRQ après quelques cycles
+  réels (notre fdc_t le fait synchronement, peut-être trop vite)
+- Sector read : sequence read/load doit traverser correctement DRQ
+- ROMDIS dynamique sans casser l'overlay (investiguer sémantique)
+
+#### Tests
+
+- 119 tests test-loci (1 mis à jour : `test_dsk_drq_register` pour
+  la convention $7F)
+- 484 tests global, 0 régression
+- Régression baseline Microdisc card (--disk-rom + -d) : OK, Sedoric
+  boote complet
+
+---
+
 ## [1.16.51-alpha] - 2026-06-07
 
 ### Sprint 34aw+ — Sedoric boot via LOCI : pipe quasi-complet

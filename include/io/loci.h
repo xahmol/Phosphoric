@@ -294,6 +294,13 @@ typedef struct loci_s {
     /* Sprint 34aw+ : INTRQ tracking pour matche le format Microdisc
      * (read $0314 = intrq | $7F, comme microdisc_read). */
     uint8_t  dsk_intrq;        /* 0x00 = asserted, 0x80 = clear */
+    /* Sprint 34ax : CTRL semantics complets — INTENA pour CPU IRQ +
+     * sync ROMDIS/EPROM bits vers memory subsystem. */
+    bool     dsk_intena;       /* CTRL bit 0 : IRQ enable */
+    void   (*dsk_cpu_irq_set)(void* ctx);
+    void   (*dsk_cpu_irq_clr)(void* ctx);
+    void   (*dsk_sync_overlay)(void* ctx, bool basic_disabled, bool overlay_active);
+    void*    dsk_bus_ctx;
 
     /* Action-button trap state (Sprint 34ai).
      * When the user presses the LOCI action button (short, warm path),
@@ -386,6 +393,16 @@ void    loci_mou_report(loci_t* loci, uint8_t buttons,
  * is active. */
 void    loci_set_tape_mount_callback(loci_t* loci,
         bool (*cb)(void*, const char*), void* ctx);
+
+/* Register the DSK bus callbacks (Sprint 34ax) — required pour permettre
+ * au Microdisc ROM (chargé via MIA_BOOT FDC) d'actionner CPU IRQ + de
+ * commuter overlay/ROMDIS via CTRL $0314 writes. Sans ces callbacks, le
+ * boot Sedoric s'arrête à "Booting." après le RESTORE command. */
+void    loci_set_dsk_bus_callbacks(loci_t* loci,
+        void (*cpu_irq_set)(void*),
+        void (*cpu_irq_clr)(void*),
+        void (*sync_overlay)(void*, bool, bool),
+        void* ctx);
 
 /* Register the ROM-swap callback used by op 0xA0 MIA_BOOT. */
 void    loci_set_rom_swap_callback(

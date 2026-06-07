@@ -1,12 +1,23 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.51-alpha
+Current Version: 1.16.52-alpha
 Release Date: 2026-06-07
-Status: Alpha (Sprint 34aw+ — Sedoric boot via LOCI atteint "Booting.")
+Status: Alpha (Sprint 34ax — CTRL semantics + IRQ callbacks LOCI bus DSK)
 
 Version History:
 ----------------
+- 1.16.52-alpha (2026-06-07): Sprint 34ax — DSK bus callbacks complets
+  * loci_set_dsk_bus_callbacks API : cpu_irq_set/clr + sync_overlay
+  * Sémantique Microdisc complète sur CTRL $0314 :
+    bit 0 INTENA + bit 4 SIDE + bits 5-6 DRIVE + bit 7 EPROM
+  * IRQF_DISK level-triggered comme Microdisc card
+  * basic_rom_disabled persistant true (sinon ROM Microdisc disparaît
+    mid-execution)
+  * Atteint stable "Booting." (avant : "insert system disc" puis crash)
+  * Reste : INTRQ timing + sector read complet
+  * 484 tests pass
+
 - 1.16.51-alpha (2026-06-07): Sprint 34aw+ — Sedoric boot pipe quasi-complet
   * sedoric_load utilisé dans dsk_open (MFM_DISK parser)
   * loci_rom_swap_cb supporte $A000 → overlay $E000 + basic_rom_disabled

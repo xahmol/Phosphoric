@@ -253,6 +253,18 @@ void loci_set_tape_mount_callback(loci_t* loci,
     loci->tape_mount_ctx = ctx;
 }
 
+void loci_set_dsk_bus_callbacks(loci_t* loci,
+        void (*cpu_irq_set)(void*),
+        void (*cpu_irq_clr)(void*),
+        void (*sync_overlay)(void*, bool, bool),
+        void* ctx) {
+    if (!loci) return;
+    loci->dsk_cpu_irq_set = cpu_irq_set;
+    loci->dsk_cpu_irq_clr = cpu_irq_clr;
+    loci->dsk_sync_overlay = sync_overlay;
+    loci->dsk_bus_ctx = ctx;
+}
+
 void loci_set_rom_swap_callback(loci_t* loci,
         bool (*cb)(void*, const char*, uint16_t),
         void* ctx) {
@@ -1894,12 +1906,36 @@ void loci_dsk_write(loci_t* loci, uint16_t address, uint8_t value) {
         case LOCI_DSK_IO_SECT:  fdc_write(&loci->dsk_fdc, 2, value); break;
         case LOCI_DSK_IO_DATA:  fdc_write(&loci->dsk_fdc, 3, value); break;
         case LOCI_DSK_IO_CTRL: {
+            /* Sprint 34ax : sémantique Microdisc complète sur $0314.
+             *   bit 0 = INTENA  (IRQ enable)
+             *   bit 1 = ROMDIS  (0 = BASIC ROM disabled, romdis=true)
+             *   bit 3 = DENSITY
+             *   bit 4 = SIDE    (0 ou 1)
+             *   bits 5-6 = DRIVE select (0..3)
+             *   bit 7 = EPROM   (0 = overlay ON, 1 = overlay OFF)
+             */
             loci->dsk_ctrl = value;
+            loci->dsk_intena = (value & 0x01) != 0;
+            uint8_t side = (value & 0x10) ? 1 : 0;
+            bool diskrom = (value & 0x80) == 0;   /* bit 7 active-low : EPROM */
             uint8_t newdrv = (uint8_t)((value & LOCI_DSK_CTRL_DRV_SEL_MASK)
                                        >> LOCI_DSK_CTRL_DRV_SEL_SHIFT);
+            loci->dsk_fdc.side = side;
             if (newdrv != loci->dsk_selected) {
                 loci->dsk_selected = newdrv;
                 loci_apply_dsk_selection(loci);
+            }
+            /* Sync overlay seulement (EPROM bit). basic_rom_disabled reste
+             * persistant à true depuis le rom_swap_cb (sinon le ROM
+             * Microdisc en cours d'exécution disparaît du mapping). */
+            if (loci->dsk_sync_overlay) {
+                loci->dsk_sync_overlay(loci->dsk_bus_ctx, true, diskrom);
+            }
+            /* INTENA + INTRQ active → assert CPU IRQ ; sinon clear. */
+            if (loci->dsk_intena && loci->dsk_intrq == 0x00) {
+                if (loci->dsk_cpu_irq_set) loci->dsk_cpu_irq_set(loci->dsk_bus_ctx);
+            } else {
+                if (loci->dsk_cpu_irq_clr) loci->dsk_cpu_irq_clr(loci->dsk_bus_ctx);
             }
             break;
         }

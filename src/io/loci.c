@@ -1862,6 +1862,66 @@ static void op_mia_boot(loci_t* loci) {
     api_return_ax(loci, 0);
 }
 
+/* ─── Sprint 34au : 7 tuning / config stubs ──────────────────────
+ *
+ * Ces 7 ops étaient renvoyées avec ENOSYS jusqu'ici. Sur la vraie
+ * carte LOCI, elles configurent le coprocesseur Pi Pico (fréquence
+ * Phi2, codepage OEM, options stdin, lanes de mapping mémoire).
+ * Côté émulateur, Phosphoric n'a pas d'équivalent hardware à régler,
+ * mais on accepte les params et on renvoie succès — ainsi le firmware
+ * LOCI peut continuer son flow d'init sans erreur.
+ *
+ * Side effects : log_debug pour observabilité, op_count incrémenté
+ * comme pour toute op.
+ */
+
+/* 0x02 CPU_PHI2 — lecture / écriture de la fréquence Phi2 du 6502.
+ * Le firmware utilise cet appel pour piloter l'horloge Pi Pico. On
+ * retourne 1 MHz dans AXSREG (Hz) — la fréquence réelle de Phosphoric. */
+static void op_cpu_phi2(loci_t* loci) {
+    uint8_t requested = loci->regs[LOCI_REG_API_A];
+    log_debug("LOCI op_cpu_phi2: requested divisor=%u, returning 1 MHz", requested);
+    api_return_axsreg(loci, 1000000u);
+}
+
+/* 0x03 OEM_CODEPAGE — sélectionne la codepage pour les translations
+ * de filenames (FAT short names). Phosphoric ne fait pas de
+ * translation → on accepte tout, return 0 OK. */
+static void op_oem_codepage(loci_t* loci) {
+    uint8_t cp = loci->regs[LOCI_REG_API_A];
+    log_debug("LOCI op_oem_codepage: cp=%u accepted (no translation done)", cp);
+    api_return_ax(loci, 0);
+}
+
+/* 0x05 STDIN_OPT — options de la console (echo, line buffering, etc.).
+ * Phosphoric n'a pas de console interactive LOCI → no-op success. */
+static void op_stdin_opt(loci_t* loci) {
+    uint8_t opt = loci->regs[LOCI_REG_API_A];
+    log_debug("LOCI op_stdin_opt: opt=$%02X accepted", opt);
+    api_return_ax(loci, 0);
+}
+
+/* Helper commun : MAP_TUNE_* prennent leurs params sur le xstack.
+ * On vide le xstack et on renvoie succès — pas de hardware mapping à
+ * tuner côté émulateur. */
+static void op_map_tune_noop(loci_t* loci, const char* name) {
+    log_debug("LOCI %s (xstack_ptr=%u) accepted, no hardware to tune",
+              name, loci->xstack_ptr);
+    xstack_zero(loci);
+    api_return_ax(loci, 0);
+}
+
+/* 0xA1 MAP_TUNE_TMAP — sélectionne un mode de mapping mémoire. */
+static void op_map_tune_tmap(loci_t* loci) { op_map_tune_noop(loci, "MAP_TUNE_TMAP"); }
+/* 0xA2 MAP_TUNE_TIOR — règle les paramètres de lecture I/O. */
+static void op_map_tune_tior(loci_t* loci) { op_map_tune_noop(loci, "MAP_TUNE_TIOR"); }
+/* 0xA3 MAP_TUNE_TIOW — règle les paramètres d'écriture I/O. */
+static void op_map_tune_tiow(loci_t* loci) { op_map_tune_noop(loci, "MAP_TUNE_TIOW"); }
+/* 0xA4 MAP_TUNE_TIOD — règle les lanes de données I/O. */
+static void op_map_tune_tiod(loci_t* loci) { op_map_tune_noop(loci, "MAP_TUNE_TIOD"); }
+/* 0xA5 MAP_TUNE_TADR — règle les lanes d'adresses I/O. */
+static void op_map_tune_tadr(loci_t* loci) { op_map_tune_noop(loci, "MAP_TUNE_TADR"); }
+
 /* ─── dispatch ─────────────────────────────────────────────────── */
 
 static void dispatch_op(loci_t* loci, uint8_t op) {
@@ -1869,6 +1929,9 @@ static void dispatch_op(loci_t* loci, uint8_t op) {
     loci->active_op = op;
     switch (op) {
         case LOCI_OP_PIX_XREG:    op_pix_xreg(loci);     break;
+        case LOCI_OP_CPU_PHI2:    op_cpu_phi2(loci);     break;  /* 34au */
+        case LOCI_OP_OEM_CODEPAGE:op_oem_codepage(loci); break;  /* 34au */
+        case LOCI_OP_STDIN_OPT:   op_stdin_opt(loci);    break;  /* 34au */
         case LOCI_OP_RNG_LRAND:   op_rng_lrand(loci);    break;
         case LOCI_OP_CLOCK:       op_clock(loci);        break;
         case LOCI_OP_CLK_GETRES:  op_clk_getres(loci);   break;
@@ -1895,6 +1958,11 @@ static void dispatch_op(loci_t* loci, uint8_t op) {
         case LOCI_OP_TAP_SEEK:    op_tap_seek(loci);     break;
         case LOCI_OP_TAP_TELL:    op_tap_tell(loci);     break;
         case LOCI_OP_TAP_READ_HEADER: op_tap_read_header(loci); break;
+        case LOCI_OP_MAP_TUNE_TMAP:   op_map_tune_tmap(loci);  break;  /* 34au */
+        case LOCI_OP_MAP_TUNE_TIOR:   op_map_tune_tior(loci);  break;  /* 34au */
+        case LOCI_OP_MAP_TUNE_TIOW:   op_map_tune_tiow(loci);  break;  /* 34au */
+        case LOCI_OP_MAP_TUNE_TIOD:   op_map_tune_tiod(loci);  break;  /* 34au */
+        case LOCI_OP_MAP_TUNE_TADR:   op_map_tune_tadr(loci);  break;  /* 34au */
         default:
             log_debug("LOCI op $%02X (%s) — stubbed, returns ENOSYS",
                       op, op_name(op));

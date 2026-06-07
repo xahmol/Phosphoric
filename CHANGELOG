@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.47-alpha] - 2026-06-07
+
+### Sprint 34au — Implémentation des 7 ops LOCI stubbées
+
+Les 7 dernières ops LOCI renvoyaient ENOSYS — risque de bloquer
+silencieusement certains flows du firmware (init coprocesseur, tuning
+mémoire, options stdin). Implémentation no-op success pour ne pas
+forcer le firmware sur une voie d'erreur.
+
+#### Added
+
+- **`0x02 CPU_PHI2`** : retourne 1 MHz (la fréquence réelle de Phosphoric)
+  dans AXSREG. Le firmware sait que la pendule ne change pas.
+- **`0x03 OEM_CODEPAGE`** : accepte la codepage, no-op success.
+  Phosphoric ne fait pas de translation de filenames.
+- **`0x05 STDIN_OPT`** : accepte les options stdin, no-op success.
+- **`0xA1..0xA5 MAP_TUNE_TMAP/TIOR/TIOW/TIOD/TADR`** : 5 ops de tuning
+  mémoire/IO. Helper commun `op_map_tune_noop` qui vide le xstack et
+  retourne 0 — la carte Pi Pico n'a pas d'équivalent côté émulateur.
+
+Toutes loggent en `debug` pour observabilité.
+
+#### Status ops LOCI
+
+```
+Avant 34au : 27 implémentées / 36 définies (75%)
+Après 34au : 34 implémentées / 36 définies (94%)
+```
+
+Reste 2 ops spéciales : `LOCI_OP_NONE (0x00)` et `LOCI_OP_RESET_SENTINEL
+(0xFF)` qui ne sont pas dispatchées normalement (gérées au niveau de
+`dispatch_trigger`).
+
+#### Tests
+
+- 8 nouveaux tests dans `test-loci` (un par op + 2 mis à jour pour
+  utiliser opcode $07 indéfini au lieu de OEM_CODEPAGE / CPU_PHI2)
+- 116 tests test-loci (vs 108 avant)
+- **481 tests global** (vs 473 avant)
+- 0 régression
+
+#### Évaluation impact
+
+Sans ces ops, le firmware LOCI pouvait :
+- Recevoir un ENOSYS et abandonner une init (visible en tests futurs)
+- Boucler dans la spin window MIA si l'erreur n'était pas attendue
+
+Avec no-op success, le firmware passe sans encombre — comportement
+équivalent à un coprocesseur Pi Pico qui ignore certains paramètres
+de tuning hardware non applicables.
+
+---
+
 ## [1.16.46-alpha] - 2026-06-07
 
 ### Sprint 34at — CSAVE ORIC-1 fixé via Option A sénior

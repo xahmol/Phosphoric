@@ -1,12 +1,19 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.46-alpha
+Current Version: 1.16.47-alpha
 Release Date: 2026-06-07
-Status: Alpha (Sprint 34at — CSAVE ORIC-1 fixé via Option A sénior, snapshot ZP)
+Status: Alpha (Sprint 34au — 34/36 ops LOCI implémentées, 481 tests pass)
 
 Version History:
 ----------------
+- 1.16.47-alpha (2026-06-07): Sprint 34au — 7 ops LOCI stubbées implémentées
+  * CPU_PHI2 (retourne 1 MHz) + OEM_CODEPAGE + STDIN_OPT (no-op success)
+  * 5x MAP_TUNE_* (TMAP/TIOR/TIOW/TIOD/TADR — vident xstack + 0)
+  * Couverture ops : 27/36 (75%) → 34/36 (94%)
+  * 8 nouveaux tests test-loci (116 total)
+  * 481 tests global, 0 régression
+
 - 1.16.46-alpha (2026-06-07): Sprint 34at — fix CSAVE ORIC-1
   * csave_end ORIC-1 : \$E7FE (code mort) → \$E80A (JMP \$EBD0 réel)
   * writefileheader_entry trap : snapshot des 9+16 bytes AVANT que la

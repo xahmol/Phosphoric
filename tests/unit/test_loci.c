@@ -114,13 +114,15 @@ TEST(test_out_of_range_read_ff) {
 TEST(test_api_op_dispatches_and_sets_enosys) {
     loci_t l; loci_init(&l);
     l.enabled = true;
-    /* Use an op with no implementation yet (OEM_CODEPAGE — never queued). */
-    loci_write(&l, 0x03AF, LOCI_OP_OEM_CODEPAGE);
+    /* Sprint 34au has implemented OEM_CODEPAGE, so use an undefined op
+     * code that hits the default-ENOSYS branch instead. $07 is not in
+     * the LOCI ABI. */
+    loci_write(&l, 0x03AF, 0x07);
     uint16_t e = l.regs[LOCI_REG_API_ERRNO_LO] |
                  ((uint16_t)l.regs[LOCI_REG_API_ERRNO_HI] << 8);
     ASSERT_EQ(e, LOCI_ENOSYS);
     ASSERT_TRUE((l.regs[LOCI_REG_BUSY] & 0x80) == 0);
-    ASSERT_EQ(l.op_count[LOCI_OP_OEM_CODEPAGE], 1);
+    ASSERT_EQ(l.op_count[0x07], 1);
 }
 
 TEST(test_api_op_none_does_not_dispatch) {
@@ -236,7 +238,9 @@ TEST(test_xstack_read_pops_byte) {
 TEST(test_unimplemented_op_still_enosys) {
     loci_t l; loci_init(&l);
     l.enabled = true;
-    loci_write(&l, 0x03AF, LOCI_OP_CPU_PHI2);   /* never implemented host-side */
+    /* Sprint 34au implemented CPU_PHI2 etc. Use a genuinely undefined
+     * opcode ($07) to verify the default-ENOSYS path is still reachable. */
+    loci_write(&l, 0x03AF, 0x07);
     uint16_t e = l.regs[LOCI_REG_API_ERRNO_LO] |
                  ((uint16_t)l.regs[LOCI_REG_API_ERRNO_HI] << 8);
     ASSERT_EQ(e, LOCI_ENOSYS);
@@ -1907,6 +1911,67 @@ TEST(test_mou_report_buttons_independent_of_deltas) {
     ASSERT_EQ(l.xram[0x3001], 7);          /* delta unchanged */
 }
 
+/* ── Sprint 34au : 7 tuning / config stubs ───────────────────── */
+
+TEST(test_op_cpu_phi2_returns_1mhz) {
+    loci_t l; loci_init(&l); l.enabled = true;
+    l.regs[LOCI_REG_API_A] = 0x10;  /* divisor — ignored */
+    loci_write(&l, 0x03AF, LOCI_OP_CPU_PHI2);
+    uint16_t e = l.regs[LOCI_REG_API_ERRNO_LO] |
+                 ((uint16_t)l.regs[LOCI_REG_API_ERRNO_HI] << 8);
+    ASSERT_EQ(e, 0);
+    /* AXSREG = 1 000 000 = $000F4240 → A=$40, X=$42, SREG=$0F, SREG_HI=$00 */
+    ASSERT_EQ(l.regs[LOCI_REG_API_A], 0x40);
+    ASSERT_EQ(l.regs[LOCI_REG_API_X], 0x42);
+    ASSERT_EQ(l.regs[LOCI_REG_API_SREG], 0x0F);
+    ASSERT_EQ(l.regs[LOCI_REG_API_SREG_HI], 0x00);
+    ASSERT_EQ(l.op_count[LOCI_OP_CPU_PHI2], 1);
+}
+
+TEST(test_op_oem_codepage_noop_success) {
+    loci_t l; loci_init(&l); l.enabled = true;
+    l.regs[LOCI_REG_API_A] = 0xB5;  /* arbitrary codepage byte */
+    loci_write(&l, 0x03AF, LOCI_OP_OEM_CODEPAGE);
+    uint16_t e = l.regs[LOCI_REG_API_ERRNO_LO] |
+                 ((uint16_t)l.regs[LOCI_REG_API_ERRNO_HI] << 8);
+    ASSERT_EQ(e, 0);
+    ASSERT_EQ(l.op_count[LOCI_OP_OEM_CODEPAGE], 1);
+}
+
+TEST(test_op_stdin_opt_noop_success) {
+    loci_t l; loci_init(&l); l.enabled = true;
+    l.regs[LOCI_REG_API_A] = 0xFF;
+    loci_write(&l, 0x03AF, LOCI_OP_STDIN_OPT);
+    uint16_t e = l.regs[LOCI_REG_API_ERRNO_LO] |
+                 ((uint16_t)l.regs[LOCI_REG_API_ERRNO_HI] << 8);
+    ASSERT_EQ(e, 0);
+    ASSERT_EQ(l.op_count[LOCI_OP_STDIN_OPT], 1);
+}
+
+/* Helper for the 5 MAP_TUNE_* — push some bytes into xstack first to
+ * verify they are consumed (xstack_ptr returns to top). */
+static void run_map_tune_test(uint8_t op) {
+    loci_t l; loci_init(&l); l.enabled = true;
+    /* Pre-populate xstack with 4 bytes that the op should consume. */
+    l.xstack_ptr = LOCI_XSTACK_SIZE - 4;
+    l.xstack[LOCI_XSTACK_SIZE - 1] = 0xAA;
+    l.xstack[LOCI_XSTACK_SIZE - 2] = 0xBB;
+    l.xstack[LOCI_XSTACK_SIZE - 3] = 0xCC;
+    l.xstack[LOCI_XSTACK_SIZE - 4] = 0xDD;
+    loci_write(&l, 0x03AF, op);
+    uint16_t e = l.regs[LOCI_REG_API_ERRNO_LO] |
+                 ((uint16_t)l.regs[LOCI_REG_API_ERRNO_HI] << 8);
+    ASSERT_EQ(e, 0);
+    ASSERT_EQ(l.xstack_ptr, LOCI_XSTACK_SIZE);
+    ASSERT_EQ(l.op_count[op], 1);
+}
+
+TEST(test_op_map_tune_tmap_clears_xstack) { run_map_tune_test(LOCI_OP_MAP_TUNE_TMAP); }
+TEST(test_op_map_tune_tior_clears_xstack) { run_map_tune_test(LOCI_OP_MAP_TUNE_TIOR); }
+TEST(test_op_map_tune_tiow_clears_xstack) { run_map_tune_test(LOCI_OP_MAP_TUNE_TIOW); }
+TEST(test_op_map_tune_tiod_clears_xstack) { run_map_tune_test(LOCI_OP_MAP_TUNE_TIOD); }
+TEST(test_op_map_tune_tadr_clears_xstack) { run_map_tune_test(LOCI_OP_MAP_TUNE_TADR); }
+
 /* ── reset ──────────────────────────────────────────────────── */
 
 TEST(test_reset_clears_state) {
@@ -2231,6 +2296,14 @@ int main(void) {
     RUN(test_6502_initial_jsr_returns_zero);
     RUN(test_6502_jsr_spin_zxstack_op_00);
     RUN(test_6502_jsr_spin_returns_via_released_stub);
+    RUN(test_op_cpu_phi2_returns_1mhz);
+    RUN(test_op_oem_codepage_noop_success);
+    RUN(test_op_stdin_opt_noop_success);
+    RUN(test_op_map_tune_tmap_clears_xstack);
+    RUN(test_op_map_tune_tior_clears_xstack);
+    RUN(test_op_map_tune_tiow_clears_xstack);
+    RUN(test_op_map_tune_tadr_clears_xstack);
+    RUN(test_op_map_tune_tiod_clears_xstack);
     RUN(test_reset_clears_state);
 
     printf("\n===========================================================\n");

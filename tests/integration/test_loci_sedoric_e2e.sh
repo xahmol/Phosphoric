@@ -126,6 +126,24 @@ if skip_if_missing "$NATIVE_ROM" "$DISK_ROM" "$LOCI_ROM" "$DSK" "$SDIMG"; then
     rm -f "$NAT_BIN" "$LOC_BIN"
 fi
 
+# ── Scenario 34b2b — RUN after LOAD (program execution after round-trip) ──
+echo ""
+echo "Scenario 34b2b — RUN after LOAD (executes reloaded program)"
+if skip_if_missing "$NATIVE_ROM" "$DISK_ROM" "$LOCI_ROM" "$DSK" "$SDIMG"; then
+    NAT_BIN=$(mktemp)
+    LOC_BIN=$(mktemp)
+    "$EMU" -r "$NATIVE_ROM" --disk-rom "$DISK_ROM" -d "$DSK" \
+        --headless -c 80000000 \
+        --type-keys '35000000:\n\p310PRINT"HELLO LOCI"\n\p3SAVE"TEST.BAS"\n\p9\p3NEW\n\p2LOAD"TEST.BAS"\n\p9\p3RUN\n\p3' \
+        --dump-ram-at 79000000:"$NAT_BIN" >/dev/null 2>&1
+    "$EMU" -r "$LOCI_ROM" --loci --loci-sdimg "$SDIMG" \
+        --headless -c 130000000 \
+        --type-keys '15000000:\p3a\p2 \p2 \p2\e\p9\p9\p2\n\p310PRINT"HELLO LOCI"\n\p9\p3SAVE"TEST.BAS"\n\p9\p9\p9NEW\n\p3LOAD"TEST.BAS"\n\p9\p9\p9RUN\n\p9\p3' \
+        --dump-ram-at 129000000:"$LOC_BIN" >/dev/null 2>&1
+    cmp_region "34b2b screen text after RUN" "$NAT_BIN" "$LOC_BIN" $((0xBB80)) 1120
+    rm -f "$NAT_BIN" "$LOC_BIN"
+fi
+
 echo ""
 echo "═══════════════════════════════════════════════════════"
 echo "  Results: $pass passed, $fail failed, $skipped skipped"

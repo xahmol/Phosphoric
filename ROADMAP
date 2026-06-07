@@ -773,6 +773,13 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] STAT reporte NOT_READY si pas de tape
 - [x] 10 nouveaux tests test-loci
 
+### Sprint 34b4: RUN after LOAD via LOCI (exec round-trip) (v1.16.59-alpha) - DONE
+- [x] `RUN` après LOAD via LOCI exécute le programme rechargé : écran « HELLO LOCI » affiché
+- [x] Test différentiel native vs LOCI : écran post-RUN 100 % identique (0/1120 byte diff)
+- [x] Scenario `34b2b — RUN after LOAD` ajouté au script E2E
+- [x] Cleanup WIP roadmap obsolète (34ay résolu en 34az)
+- [x] 4/4 scenarios E2E PASS ; 484 tests unitaires PASS
+
 ### Sprint 34b3: Régression E2E LOCI/Sedoric — script + cible Makefile (v1.16.58-alpha) - DONE
 - [x] `tests/integration/test_loci_sedoric_e2e.sh` : rejoue 34b0/b1/b2, compare native vs LOCI
 - [x] Skip gracieux si ROMs/images absentes (assets non versionnés)
@@ -815,7 +822,7 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] `loci_fdc_clr_intrq` → cpu_irq_clr(IRQF_DISK) symétrique
 - [x] E2E : « Booting. » sur l'écran, CPU exécute en RAM PC=$04F7
 - [x] 484 tests PASS (118 LOCI + 366 core)
-- [ ] WIP : Sedoric loader bloque après stage 1 — investigation Read Multiple / DRQ pacing à reporter sprint 34az
+- [x] WIP résolu en 34az : ROMDIS dynamique manquant (pas Read Multiple / DRQ pacing), boot complet validé + interactions DIR/LOAD/SAVE/RUN en 34b0-34b4
 
 ### Sprint 34ad: LOCI ROM swap runtime MIA_BOOT (v1.16.30-alpha) - DONE
 - [x] Op 0xA0 MIA_BOOT décodé : A=settings, dispatcher

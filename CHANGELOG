@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.59-alpha] - 2026-06-07
+
+### Sprint 34b4 — RUN after LOAD via LOCI (exec du programme rechargé)
+
+#### Validation E2E
+
+Suite logique du round-trip 34b2 : non seulement le programme est
+byte-identique en mémoire après SAVE → NEW → LOAD via LOCI, mais
+**il s'exécute correctement** :
+
+```
+RUN
+HELLO LOCI
+Ready
+```
+
+L'écran post-RUN est **100 % identique** entre boot natif Microdisc et
+boot LOCI (0/1120 byte diff) — le programme rechargé via LOCI WD1793
+produit le même output qu'en natif.
+
+#### Added
+
+- Scenario `34b2b — RUN after LOAD` dans
+  `tests/integration/test_loci_sedoric_e2e.sh` (compare l'écran complet
+  $BB80, 1120 octets).
+
+#### Changed
+
+- Cleanup ROADMAP : WIP « Sedoric loader bloque après stage 1 » du
+  sprint 34ay marqué comme résolu (en 34az : ROMDIS dynamique, pas
+  Read Multiple / DRQ pacing comme initialement supposé).
+
+#### Tests
+
+- 484 tests unitaires PASS (suite standard inchangée).
+- 4/4 scenarios E2E PASS via `make test-loci-e2e`.
+
+---
+
 ## [1.16.58-alpha] - 2026-06-07
 
 ### Sprint 34b3 — Régression E2E LOCI/Sedoric (script + cible Makefile)

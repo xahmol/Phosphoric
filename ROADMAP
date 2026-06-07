@@ -773,6 +773,15 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] STAT reporte NOT_READY si pas de tape
 - [x] 10 nouveaux tests test-loci
 
+### Sprint 34b0: Interaction Sedoric V4.0 via LOCI — DOS VERSION (v1.16.55-alpha) - DONE
+- [x] Frappe `6` (option « Version du DOS ») captée par Sedoric via pipe LOCI
+- [x] Frappe `A` (drive A) déclenche lecture secteur version sur WD1793 LOCI
+- [x] Écran « SEDORIC V4.000 01/01/16 » + crédits + « Another disc? (Y/N) »
+- [x] Test différentiel native vs LOCI : écran texte 100 % identique (0/1120 byte diff)
+- [x] Validation : pipe LOCI clavier → Sedoric → FDC fonctionne en lecture continue post-boot
+- [x] Hygiène : `.gitignore` étendu (binaires tests récents, *.d, tools/, tapes/, loci_demo.img)
+- [x] 484 tests PASS (aucune modif code source)
+
 ### Sprint 34az: ROMDIS dynamique — boot Sedoric COMPLET (v1.16.54-alpha) - DONE
 - [x] Bug identifié via senior review : `basic_rom_disabled` hardcodé true
 - [x] Fix : `romdis = (CTRL & 0x02) == 0` dynamique, miroir microdisc natif

@@ -26,6 +26,35 @@ test_rom
 test_video
 test_audio
 test_debugger
+test_atmos
+test_coverage
+test_joystick
+test_keyboard
+test_loci
+test_loci_sdimg
+test_loci_sdimg_write
+test_mcp40
+test_printer
+test_profiler
+test_renderer
+test_rominfo
+test_savestate
+test_serial
+test_symbols
+test_trace
+
+# Tools binaries
+tools/gen_test_tap
+tools/mkloci_sd
+tools/mktap_serial
+tools/sdl_keytest
+
+# Make dependency files
+*.d
+
+# LOCI artifacts at root
+loci_demo.img
+memdump_*.bin
 
 # Coverage files
 *.gcda
@@ -52,6 +81,12 @@ screenshot.png
 
 # User disk images
 disks/
+
+# User tape collection
+tapes/
+
+# Local dev/debug tools
+tools/sdl_keytest*
 
 # IDE files
 .vscode/

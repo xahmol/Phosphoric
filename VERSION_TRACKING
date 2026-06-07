@@ -1,12 +1,13 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.54-alpha
+Current Version: 1.16.55-alpha
 Release Date: 2026-06-07
-Status: Alpha (Sprint 34ax — CTRL semantics + IRQ callbacks LOCI bus DSK)
+Status: Alpha (Sprint 34b0 — Interaction Sedoric V4.0 via LOCI : DOS VERSION program E2E)
 
 Version History:
 ----------------
+- 1.16.55-alpha (2026-06-07): Sprint 34b0 — **Interaction Sedoric V4.0 via LOCI** (option 6 + drive A → version DOS affichée, écran 100 % identique au natif), 484 tests PASS
 - 1.16.54-alpha (2026-06-07): Sprint 34az — **Boot Sedoric V4.0 COMPLET via LOCI** (ROMDIS dynamique, menu DOS affiché identique au natif), 484 tests PASS
 - 1.16.53-alpha (2026-06-07): Sprint 34ay — INTRQ asynchrone, boot Sedoric atteint stage 1 (« Booting. » + RAM exec PC=$04F7), 484 tests PASS
 - 1.16.52-alpha (2026-06-07): Sprint 34ax — DSK bus callbacks complets

@@ -5,6 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.55-alpha] - 2026-06-07
+
+### Sprint 34b0 — Interaction Sedoric V4.0 via LOCI (DOS VERSION program)
+
+#### Validation E2E
+
+À partir du menu SEDORIC DOS V4.0 affiché via LOCI (sprint 34az), frappe
+clavier `6` (option « Version du DOS ») puis `A` (drive A) → l'écran
+affiche identiquement au boot natif Microdisc :
+
+```
+    DOS VERSION PROGRAM (V1.1)
+Enter the disc into the appropriate
+drive, then press the drive letter
+(e.g. A, B, C or D)
+SEDORIC V4.000 01/01/16
+Upgraded by Ray McLaughlin
+Andr{ Ch{ramy,Michel Bec,Simon Guyart
+See SEDORIC4.FIX file for information
+Another disc? (Y/N)
+```
+
+Comparaison différentielle native vs LOCI au cycle 59M :
+- **Écran texte ($BB80-$BFE0, 1120 octets) : 100 % identique**, 0 byte diff.
+- RAM $0000-$BFFF : 3.37 % diff (1657/49152), exclusivement zero-page +
+  buffers temporaires (timing IRQ légèrement différent).
+
+#### Ce que valide ce sprint
+
+Au-delà du boot statique (34az), ce test prouve que le pipe LOCI
+clavier → Sedoric → FDC fonctionne **en lecture disque continue
+post-boot** : Sedoric lit le secteur de version (track 0/secteur 17 du
+SEDO40U.DSK) via le pont WD1793 LOCI exactement comme via la carte
+Microdisc native.
+
+#### Reproduction
+
+Native baseline :
+```bash
+./oric1-emu -r roms/basic11b.rom --disk-rom roms/microdis.rom \
+    -d disks/SEDO40u.DSK --headless -c 60000000 \
+    --type-keys '35000000:6\p3a' \
+    --dump-ram-at 59000000:/tmp/native_version.bin
+```
+
+Via LOCI :
+```bash
+./oric1-emu -r roms/loci/locirom --loci --loci-sdimg loci_demo.img \
+    --headless -c 60000000 \
+    --type-keys '15000000:\p3a\p2 \p2 \p2\e\p9\p2\p36\p3a' \
+    --dump-ram-at 59000000:/tmp/loci_v6a.bin
+```
+
+#### Tests
+
+- 484 tests, tous PASS — aucun changement de code source (sprint de
+  validation E2E pure).
+
+#### Hygiène repo
+
+- `.gitignore` étendu : binaires de tests récents (`test_atmos`,
+  `test_loci*`, `test_serial`, `test_savestate`, etc.), outils
+  (`tools/gen_test_tap`, `tools/mkloci_sd`, `tools/mktap_serial`,
+  `tools/sdl_keytest*`), fichiers de dépendances `*.d`, artefacts
+  LOCI (`loci_demo.img`, `memdump_*.bin`) et collection `tapes/`.
+
+---
+
 ## [1.16.54-alpha] - 2026-06-07
 
 ### Sprint 34az — Boot Sedoric V4.0 COMPLET via LOCI

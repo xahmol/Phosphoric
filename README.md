@@ -2,7 +2,7 @@
 
 A cycle-accurate ORIC-1 / Atmos emulator written in C11.
 
-**Version: 1.14.3-alpha** | **286 tests, 100% pass** | **Zero memory leaks**
+**Version: 1.16.75-alpha** | **499 unit tests + 12 E2E, 100% pass** | **Zero memory leaks**
 
 ```
  ____  _                      _                _
@@ -45,6 +45,8 @@ make SDL2=1
 - **AY-3-8910 PSG** — 3 tone channels, noise, 16 envelope shapes, SDL2 audio output
 - **Microdisc** — WD1793 FDC, 4 drives (A-D), overlay ROM, Sedoric disk boot
 - **Cassette** — TAP format, CLOAD/CSAVE via ROM patching, fast load mode, multi-block support, post-CLOAD rechain
+- **ACIA 6551** — Serial controller at $031C-$031F, 5 backends (loopback, TCP, PTY, modem AT, COM), V23 mode (Minitel/Digitelec)
+- **LOCI** — Lovely Oric Computer Interface (sodiumlb 2024) : MIA bus $03A0-$03BF, 35/36 API ops, USB HID, WD1793 cycle-accurate, FAT16/32 SD image, runtime ROM swap (`--loci`, `--loci-flash DIR`, `--loci-sdimg PATH`). Boote Sedoric V4 master complet via le firmware LOCI.
 
 ### ORIC-1 & Atmos Support
 - **ROM auto-detection** — Detects BASIC 1.0 (ORIC-1) or 1.1 (Atmos) from ROM header
@@ -72,10 +74,21 @@ make SDL2=1
 - **CLI** — `--save-state FILE`, `--load-state FILE`
 
 ### Interactive Debugger
-- **Breakpoints** — Up to 16 PC breakpoints
+- **Breakpoints** — Up to 16 PC breakpoints, conditional (`b ADDR if EXPR`), 8 raster-line breakpoints (`br LINE`)
 - **Watchpoints** — Up to 8 memory write watchpoints
-- **Commands** — step, next, continue, registers, disassembly, memory dump, stack, VIA, PSG
+- **Commands** — step, next, **step-out**, continue, **undo** (rewind 16 snapshots CPU+RAM), registers, set, disassembly (paginated with symbol-resolved operands), memory dump+edit, stack
+- **Live peripheral introspection** — `via`, `psg`, `disk`/`fdc`, `acia`/`serial`, `tape`, `loci` snapshots
+- **Symbols** — Load `.sym`/`.lab`/EQU/VICE formats with `--symbols FILE`. Disasm and trace operands auto-annotated.
+- **TUI mode** — ncurses 6-pane interface (regs, stack, disasm, mem, bp+wp, status). Build with `TUI=1`, launch with `--tui`.
 - **CLI** — `--debug` (break at start), `--break ADDR`
+
+### IPC Control Mode (OricForge IDE integration)
+- **`--control` flag** — Phosphoric speaks a text protocol on stdin/stdout, logs on stderr.
+- **24 commands** : `hello`, `regs`, `set`, `read`, `bread` (binary), `write`, `peek <subsys>`, `break`, `unbreak`, `break-list`, `watch`, `raster`, `step`, `next`, `step-out`, `continue`, `pause`, `reset`, `quit`, `load-tap`, `load-rom`, `load-sym`, `disasm`, and more.
+- **3 event types** : `EVT ready`, `EVT stopped reason=…`, `EVT halt reason=…`.
+- **Async pause** while running, capability negotiation via `hello`, SIGPIPE safe.
+- **Python smoke client** (`tests/integration/phos_smoke_client.py`) — stdlib only, ~250 LOC reference implementation.
+- **Spec** : [docs/control_protocol.md](docs/control_protocol.md)
 
 ### Chromecast Streaming
 - **MJPEG server** — HTTP stream at `/stream` (720x672, 3x upscale)
@@ -188,6 +201,20 @@ Analysis:
 Debugger:
   -D, --debug               Start in debugger
   --break ADDR              Set initial breakpoint
+  --symbols FILE            Load symbol table (.sym / .lab / .sym65 / EQU)
+  --tui                     Use ncurses TUI debugger (requires TUI=1 build)
+  --control                 IPC control mode for IDE integration (stdin protocol)
+
+LOCI peripheral:
+  --loci                    Enable LOCI MIA at $03A0-$03BF
+  --loci-flash DIR          Sandbox root for LOCI file ops (implies --loci)
+  --loci-sdimg PATH         Raw FAT16/32 SD image (implies --loci)
+
+Serial (ACIA 6551):
+  --serial TYPE             loopback | tcp:host:port | pty | modem | com:baud,...
+  --serial-v23              V23 asymmetric mode (Minitel)
+  --serial-trace FILE       Trace TX/RX/signals with timestamps
+  --acia-addr XXXX          Override ACIA base address (default $031C)
 
 Chromecast:
   --cast-server[=PORT]      Start MJPEG server (default 8080)
@@ -221,27 +248,40 @@ Display & Export:
 ## Testing
 
 ```bash
-make tests               # All 286 tests (100% pass)
-make test-cpu            # 74 CPU tests
-make test-memory         # 19 memory tests
-make test-io             # 29 VIA/I/O tests
-make test-storage        # 12 storage tests
-make test-system         # 7 integration tests
-make test-video          # 11 video export tests
-make test-audio          # 8 PSG audio tests
-make test-debugger       # 8 debugger tests
-make test-savestate      # 8 save state tests
-make test-atmos          # 10 Atmos support tests
-make test-joystick       # 10 joystick tests
-make test-printer        # 10 printer tests
-make test-mcp40          # 10 MCP-40 plotter tests
-make test-renderer       # 10 display scaling tests
-make test-trace          # 10 CPU trace logging tests
-make test-profiler       # 10 CPU profiler tests
-make test-rominfo        # 10 ROM analysis tests
+make tests               # All 499 unit tests (100% pass)
+make test-cpu            # CPU tests (74)
+make test-memory         # Memory tests
+make test-io             # VIA/I/O tests
+make test-storage        # Storage tests
+make test-system         # Integration tests
+make test-video          # Video export tests
+make test-audio          # PSG audio tests
+make test-debugger       # Debugger tests
+make test-savestate      # Save state tests
+make test-atmos          # Atmos support tests
+make test-joystick       # Joystick tests
+make test-printer        # Printer tests
+make test-mcp40          # MCP-40 plotter tests
+make test-renderer       # Display scaling tests
+make test-trace          # CPU trace logging tests
+make test-profiler       # CPU profiler tests
+make test-rominfo        # ROM analysis tests
+make test-serial         # ACIA 6551 serial tests
+make test-symbols        # Symbol loader tests (.sym / .lab / EQU / VICE)
+make test-loci           # LOCI MIA tests (133 tests)
+make test-loci-sdimg     # LOCI FAT16/32 SD image tests
+make test-loci-sdimg-write # LOCI write API tests
+make test-loci-e2e       # 12 end-to-end scenarios (Sedoric boot + IPC control)
 make valgrind            # Memory leak detection
 make static-analysis     # Compiler warnings analysis
 ```
+
+End-to-end regression (`make test-loci-e2e`) covers :
+- Sedoric V4 boot via LOCI (5 scenarios)
+- IPC control protocol handshake + step + break (3 scenarios)
+- IPC async pause-while-running
+- IPC watchpoint, raster bp, EVT halt cycle_limit, disasm
+- IPC Python smoke client (handshake + bread binary read)
 
 ## Architecture
 
@@ -275,23 +315,29 @@ make static-analysis     # Compiler warnings analysis
 src/
   cpu/           6502 CPU (opcodes, addressing modes)
   memory/        64KB memory map, ROM/RAM banking
-  io/            VIA 6522, keyboard, cassette, Microdisc
+  io/            VIA 6522, keyboard, cassette, Microdisc, ACIA 6551,
+                 LOCI (loci_core + loci_fs + loci_bus + loci_boot)
   video/         ULA rendering (text+HIRES), export (PPM/BMP/ASCII)
   audio/         AY-3-8910 PSG, SDL2 audio output
   storage/       TAP cassette, Sedoric filesystem, WD1793 FDC
   network/       MJPEG cast server, CASTV2 Chromecast client
   hostfs/        Host filesystem sharing, VFS abstraction
-  utils/         Logging, INI config parser
+  utils/         Logging, INI config parser, CPU trace, profiler,
+                 ROM info, symbols loader
   main.c         Emulation loop, CLI, I/O wiring
   savestate.c    Save/load state (.ost format)
   debugger.c     Interactive REPL debugger
+  control.c      IPC control mode (--control, OricForge integration)
+  tui.c          ncurses TUI debugger (TUI=1 build)
 
 include/         Public headers
-tests/unit/      18 test files, 256 tests
+tests/unit/      499 unit tests across CPU, memory, I/O, video, audio,
+                 storage, debugger, savestate, LOCI, symbols, etc.
+tests/integration/ E2E regression (Sedoric boot, IPC control, Python smoke client)
 tools/           bas2tap, bin2tap, tap2sedoric
 examples/        Example BASIC programs (.bas + .tap)
 roms/            ROM files (not distributed)
-docs/            User guide, compatibility list, agile plan
+docs/            User guide, control_protocol.md, CR review docs
 ```
 
 ## ORIC Hardware Reference
@@ -324,8 +370,9 @@ docs/            User guide, compatibility list, agile plan
 ### Avertissements
 
 - **Aucune vérification formelle** : le code n'a pas été audité par un
-  ingénieur logiciel professionnel. Bien que 256 tests unitaires passent,
-  la couverture de test n'est pas exhaustive et des cas limites peuvent exister.
+  ingénieur logiciel professionnel. Bien que 499 tests unitaires + 12
+  scénarios E2E passent, la couverture de test n'est pas exhaustive et
+  des cas limites peuvent exister.
 - **Non adapté à la production** : il s'agit d'un projet expérimental et
   éducatif. Il ne doit pas être utilisé dans des environnements critiques,
   sensibles en termes de sécurité ou en production sans une revue
@@ -349,7 +396,7 @@ Utilisation à vos propres risques. Les contributions et revues de code sont bie
 ## Crédits et sources
 
 ### Auteurs
-- **Claude Opus 4.6 (Anthropic)** — Génération IA du code (architecture, implémentation, tests, documentation)
+- **Claude Opus 4.6 / 4.7 (Anthropic)** — Génération IA du code (architecture, implémentation, tests, documentation)
 - **bmarty** — Direction du projet, supervision, tests sur matériel réel
 
 ### Émulateurs de référence
@@ -408,4 +455,4 @@ This project is licensed under the [MIT License](LICENSE).
 
 ---
 
-Phosphoric v1.14.3-alpha | 286 tests | ORIC-1 + Atmos | Post-CLOAD Rechain + CSAVE + Memory Dump + Documentation + ROM Analysis + CPU Profiler + CPU Trace + Display Scaling + MCP-40 Plotter + Printer + Joystick | 2026-03-16
+Phosphoric v1.16.75-alpha | 499 unit tests + 12 E2E | ORIC-1 + Atmos | LOCI MIA boot Sedoric V4 + ACIA 6551 + IPC control (OricForge) + Symbols + TUI + Conditional/Raster BPs + Rewind + Live peripheral introspection + bread binary + MCP-40 + Printer + Joystick + Cast | 2026-06-07

@@ -35,6 +35,7 @@
 
 #include "io/loci.h"
 #include "io/loci_sdimg.h"
+#include "storage/sedoric.h"   /* sedoric_load — MFM_DISK header parser (34aw+) */
 #include "utils/logging.h"
 
 #include <string.h>
@@ -128,6 +129,8 @@ static void seed_initial_stub(loci_t* loci) {
 /* Forward decls — defined further down. */
 static void loci_fdc_set_drq(void* userdata);
 static void loci_fdc_clr_drq(void* userdata);
+static void loci_fdc_set_intrq(void* userdata);
+static void loci_fdc_clr_intrq(void* userdata);
 
 bool loci_init(loci_t* loci) {
     if (!loci) return false;
@@ -143,12 +146,16 @@ bool loci_init(loci_t* loci) {
     /* Sprint 34aw : init the WD1793 backing the 4 DSK drives. Default
      * geometry matches Oric DSK convention (41 tracks SS, 17 sectors). */
     fdc_init(&loci->dsk_fdc);
-    /* DRQ callbacks update the LOCI-visible drq byte (active-low : 0=set,
-     * 0x80=clear). Same convention as Microdisc on $0318. */
+    /* DRQ + INTRQ callbacks update LOCI-visible bytes (active-low) — même
+     * convention que Microdisc sur $0318 (DRQ) / $0314 (INTRQ). */
     loci->dsk_fdc.set_drq = loci_fdc_set_drq;
     loci->dsk_fdc.clr_drq = loci_fdc_clr_drq;
     loci->dsk_fdc.drq_userdata = loci;
-    loci->dsk_drq = 0x80;   /* DRQ inactive at boot */
+    loci->dsk_fdc.set_intrq = loci_fdc_set_intrq;
+    loci->dsk_fdc.clr_intrq = loci_fdc_clr_intrq;
+    loci->dsk_fdc.intrq_userdata = loci;
+    loci->dsk_drq   = 0x80;   /* clear at boot */
+    loci->dsk_intrq = 0x80;
     for (int i = 0; i < 4; i++) {
         loci->dsk_tracks[i]  = 41;
         loci->dsk_sectors[i] = 17;
@@ -1753,14 +1760,22 @@ static void op_tap_read_header(loci_t* loci) {
     api_return_axsreg(loci, (uint32_t)(sync_end - 4));
 }
 
-/* DRQ callbacks bridging fdc_t → loci.dsk_drq (active-low byte). */
+/* DRQ / INTRQ callbacks bridging fdc_t → loci.dsk_*. */
 static void loci_fdc_set_drq(void* userdata) {
     loci_t* l = (loci_t*)userdata;
-    if (l) l->dsk_drq = 0x00;   /* asserted */
+    if (l) l->dsk_drq = 0x00;
 }
 static void loci_fdc_clr_drq(void* userdata) {
     loci_t* l = (loci_t*)userdata;
-    if (l) l->dsk_drq = 0x80;   /* clear */
+    if (l) l->dsk_drq = 0x80;
+}
+static void loci_fdc_set_intrq(void* userdata) {
+    loci_t* l = (loci_t*)userdata;
+    if (l) l->dsk_intrq = 0x00;
+}
+static void loci_fdc_clr_intrq(void* userdata) {
+    loci_t* l = (loci_t*)userdata;
+    if (l) l->dsk_intrq = 0x80;
 }
 
 /* ─── DSK WD1793 cycle-accurate (Sprint 34aw) ──────────────────────
@@ -1795,24 +1810,38 @@ static bool dsk_open(loci_t* loci, uint8_t drive, const char* host_path) {
         loci->dsk_image[drive] = NULL;
         loci->dsk_image_size[drive] = 0;
     }
-    /* Open + slurp the whole .DSK into a malloc'd buffer so the WD1793
-     * has byte-random access (Oric DSKs are typically ≤ 360 KB). */
-    FILE* fp = fopen(host_path, "r+b");
-    if (!fp) fp = fopen(host_path, "rb");
-    if (!fp) return false;
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0 || sz > (long)(1 * 1024 * 1024)) { fclose(fp); return false; }
-    uint8_t* buf = (uint8_t*)malloc((size_t)sz);
-    if (!buf) { fclose(fp); return false; }
-    if (fread(buf, 1, (size_t)sz, fp) != (size_t)sz) {
-        free(buf); fclose(fp); return false;
+    /* Sprint 34aw+ : utilise sedoric_load qui gère le format MFM_DISK
+     * (header 256 octets + tracks MFM) — convertit en sector array plat
+     * que le fdc_t comprend directement. */
+    sedoric_disk_t* sd = sedoric_load(host_path);
+    if (sd) {
+        loci->dsk_image[drive]      = sd->data;   /* steal ownership */
+        loci->dsk_image_size[drive] = sd->size;
+        loci->dsk_tracks[drive]     = sd->tracks;
+        loci->dsk_sectors[drive]    = sd->sectors;
+        free(sd);
+        loci->dsk_fp[drive] = fopen(host_path, "r+b");
+        if (!loci->dsk_fp[drive]) loci->dsk_fp[drive] = fopen(host_path, "rb");
+    } else {
+        /* Fallback raw image. */
+        FILE* fp = fopen(host_path, "rb");
+        if (!fp) return false;
+        fseek(fp, 0, SEEK_END);
+        long sz = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        if (sz <= 0 || sz > (long)(1 * 1024 * 1024)) { fclose(fp); return false; }
+        uint8_t* buf = (uint8_t*)malloc((size_t)sz);
+        if (!buf) { fclose(fp); return false; }
+        if (fread(buf, 1, (size_t)sz, fp) != (size_t)sz) {
+            free(buf); fclose(fp); return false;
+        }
+        loci->dsk_fp[drive]         = fp;
+        loci->dsk_image[drive]      = buf;
+        loci->dsk_image_size[drive] = (uint32_t)sz;
     }
-    loci->dsk_fp[drive] = fp;
-    loci->dsk_image[drive] = buf;
-    loci->dsk_image_size[drive] = (uint32_t)sz;
-    /* If this drive is the currently selected one, re-arm the FDC. */
+    log_info("LOCI dsk_open drive %d: %s (%u bytes, %d tracks, %d sectors)",
+             drive, host_path, loci->dsk_image_size[drive],
+             loci->dsk_tracks[drive], loci->dsk_sectors[drive]);
     if (loci->dsk_selected == drive) {
         loci_apply_dsk_selection(loci);
     }
@@ -1851,8 +1880,8 @@ uint8_t loci_dsk_read(loci_t* loci, uint16_t address) {
         case LOCI_DSK_IO_TRACK: return fdc_read(&loci->dsk_fdc, 1);
         case LOCI_DSK_IO_SECT:  return fdc_read(&loci->dsk_fdc, 2);
         case LOCI_DSK_IO_DATA:  return fdc_read(&loci->dsk_fdc, 3);
-        case LOCI_DSK_IO_CTRL:  return loci->dsk_ctrl;
-        case LOCI_DSK_IO_DRQ:   return loci->dsk_drq;
+        case LOCI_DSK_IO_CTRL:  return loci->dsk_intrq | 0x7F;  /* IRQ status read */
+        case LOCI_DSK_IO_DRQ:   return loci->dsk_drq | 0x7F;
     }
     return 0xFF;
 }

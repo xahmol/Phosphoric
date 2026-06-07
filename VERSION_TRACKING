@@ -1,12 +1,23 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.50-alpha
+Current Version: 1.16.51-alpha
 Release Date: 2026-06-07
-Status: Alpha (Sprint 34aw — WD1793 cycle-accurate sur DSK LOCI)
+Status: Alpha (Sprint 34aw+ — Sedoric boot via LOCI atteint "Booting.")
 
 Version History:
 ----------------
+- 1.16.51-alpha (2026-06-07): Sprint 34aw+ — Sedoric boot pipe quasi-complet
+  * sedoric_load utilisé dans dsk_open (MFM_DISK parser)
+  * loci_rom_swap_cb supporte $A000 → overlay $E000 + basic_rom_disabled
+  * Re-cpu_reset après overlay pour fetch $FFFC depuis microdis.rom
+  * INTRQ tracking (callbacks fdc_t → dsk_intrq)
+  * Read $0314/$0318 retournent intrq/drq | $7F (convention Microdisc)
+  * Pipe : LOCI boot → ESC → microdisc ROM → Force/Restore cmd ✓
+  * Stop sur "Booting." (avant : "insert system disc")
+  * Reste : IRQ enable, ROMDIS/EPROM dynamiques sur CTRL writes
+  * 484 tests pass, 0 régression
+
 - 1.16.50-alpha (2026-06-07): Sprint 34aw — WD1793 cycle-accurate sur DSK LOCI
   * Réutilisation du fdc_t existant (src/storage/disk.c, déjà cycle-accurate)
   * 4 dsk_image[] buffers RAM + dsk_fdc dans loci_t

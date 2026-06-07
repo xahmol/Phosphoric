@@ -1354,8 +1354,9 @@ TEST(test_dsk_track_sect_data_passthrough) {
 TEST(test_dsk_drq_register) {
     loci_t l; loci_init(&l);
     l.enabled = true;
-    loci_dsk_write(&l, 0x0318, 0x80);
-    ASSERT_EQ(loci_dsk_read(&l, 0x0318), 0x80);
+    /* Sprint 34aw+ : read $0318 returns drq | 0x7F (Microdisc convention).
+     * dsk_drq init = 0x80 (inactive) → read = 0xFF. */
+    ASSERT_EQ(loci_dsk_read(&l, 0x0318), 0xFF);
 }
 
 TEST(test_dsk_four_independent_drives) {

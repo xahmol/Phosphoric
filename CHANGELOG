@@ -5,6 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.51-alpha] - 2026-06-07
+
+### Sprint 34aw+ — Sedoric boot via LOCI : pipe quasi-complet
+
+Test E2E moi-même selon ta demande. Pipe maintenant à 90% pour booter
+Sedoric DOS depuis une image SD via LOCI.
+
+#### Added
+
+- **`sedoric_load` utilisé dans `dsk_open`** : parse le format MFM_DISK
+  (header 256 octets + tracks MFM) et convertit en flat sector array,
+  identique au flow `--disk-rom + -d`. Permet aux .DSK style sodiumlb
+  d'être servis directement.
+- **Overlay $E000 dans `loci_rom_swap_cb` pour base_addr=`$A000`** :
+  charge microdis.rom dans `mem.overlay_rom`, set `overlay_active=true`
+  + **`basic_rom_disabled=true`** (le bit ROMDIS Microdisc).
+- **Re-`cpu_reset()`** après overlay pour que `$FFFC` soit lu depuis
+  microdis.rom et que le CPU saute à l'entry Microdisc ROM ($EB7E).
+- **INTRQ tracking** : `loci.dsk_intrq` byte + callbacks `set_intrq` /
+  `clr_intrq` wirés à `fdc_t`. Read `$0314` renvoie `intrq | $7F`
+  (convention Microdisc), pas `dsk_ctrl`.
+- **`dsk_intrq` à 0x80 init** (clear).
+
+#### Changed
+
+- Read `$0318` (DRQ) renvoie `drq | $7F` au lieu de `drq` brut
+  (cohérent avec Microdisc).
+- Read `$0314` renvoie l'IRQ status au lieu du dernier `dsk_ctrl` écrit.
+- `test_dsk_drq_register` mis à jour pour la nouvelle convention $7F.
+
+#### État E2E Sedoric
+
+Workflow automatique testé :
+```bash
+./oric1-emu -r roms/loci/locirom --loci --loci-sdimg loci_demo.img \
+    --keyboard azerty --type-keys '15000000:\p3a\p2 \p2 \p2\e\p9\p9\p9'
+```
+
+Pipe traversé :
+1. ✅ LOCI ROM boote
+2. ✅ Press A → drive A section
+3. ✅ SPACE → file picker
+4. ✅ SPACE → SEDO40U.DSK sélectionné, extract + mount
+5. ✅ `dsk_open` : 696320 bytes, 80 tracks, 17 sectors (MFM parsé)
+6. ✅ ESC → MIA_BOOT FDC flag
+7. ✅ BASIC 1.1 ROM swap à `$C000`
+8. ✅ Microdis.rom overlay activé à `$E000`, ROMDIS set
+9. ✅ CPU reset → PC=`$EB7E` (Microdisc ROM entry)
+10. ✅ Microdisc ROM exécute, écrit `$0314` (CTRL) + `$0310` (CMD)
+11. ✅ Force Interrupt ($D8) + Restore ($08) acceptés par fdc_t
+12. ⚠️ Bloque sur écran "Booting." (avant : "insert system disc")
+
+**Régression vs baseline** : `--disk-rom + -d` direct boote
+SEDORIC DOS V4.0 complet en 12s. LOCI atteint la phase "Booting."
+mais ne charge pas la suite. Hypothèses pour 34ax :
+- IRQ enable (`MICRODISC_CTRL_INTENA`) doit déclencher CPU IRQ
+- ROMDIS bit 1 du CTRL doit dynamiquement on/off `basic_rom_disabled`
+- EPROM bit 7 doit dynamiquement on/off `overlay_active`
+
+#### Validation
+
+- 119 tests test-loci pass
+- 484 tests global, 0 régression
+- `--disk-rom + -d` direct toujours boote Sedoric en baseline (pas de
+  régression sur le chemin Microdisc card)
+
+---
+
 ## [1.16.50-alpha] - 2026-06-07
 
 ### Sprint 34aw — WD1793 cycle-accurate sur le bus DSK LOCI

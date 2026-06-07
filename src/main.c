@@ -342,8 +342,49 @@ static bool loci_tape_mount_cb(void* ctx, const char* host_tape_path) {
 static bool loci_rom_swap_cb(void* ctx, const char* rom_path, uint16_t base_addr) {
     emulator_t* emu = (emulator_t*)ctx;
     if (!emu || !rom_path || !*rom_path) return false;
+
+    if (base_addr == 0xA000) {
+        /* Sprint 34aw : LOCI MIA_BOOT FDC flag → microdis.rom overlay.
+         * Le mapping réel Microdisc place l'overlay à $E000-$FFFF (8 KB).
+         * On charge le fichier dans un buffer persistant et on active
+         * l'overlay du système mémoire (même mécanisme que Microdisc
+         * card avec --disk-rom). */
+        FILE* fp = fopen(rom_path, "rb");
+        if (!fp) {
+            log_error("LOCI ROM swap: cannot open %s", rom_path);
+            return false;
+        }
+        fseek(fp, 0, SEEK_END);
+        long sz = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        if (sz <= 0 || sz > 16384) { fclose(fp); return false; }
+        /* Reuse Microdisc's overlay buffer if available, else allocate
+         * a dedicated one (lifecycle: emulator_cleanup not yet hooked,
+         * acceptable leak at shutdown). */
+        static uint8_t* loci_overlay_buf = NULL;
+        if (loci_overlay_buf) { free(loci_overlay_buf); loci_overlay_buf = NULL; }
+        loci_overlay_buf = (uint8_t*)malloc((size_t)sz);
+        if (!loci_overlay_buf) { fclose(fp); return false; }
+        if (fread(loci_overlay_buf, 1, (size_t)sz, fp) != (size_t)sz) {
+            free(loci_overlay_buf); loci_overlay_buf = NULL;
+            fclose(fp);
+            return false;
+        }
+        fclose(fp);
+        emu->memory.overlay_rom         = loci_overlay_buf;
+        emu->memory.overlay_rom_size    = (uint32_t)sz;
+        emu->memory.overlay_active      = true;
+        emu->memory.basic_rom_disabled  = true;   /* romdis = ROM disable signal */
+        log_info("LOCI ROM swap: microdisc overlay activated ($E000+, %ld bytes from %s)",
+                 sz, rom_path);
+        /* Re-reset CPU so $FFFC reset vector is fetched from Microdisc
+         * overlay instead of the BASIC ROM loaded in the prior $C000 call. */
+        cpu_reset(&emu->cpu);
+        return true;
+    }
+
     if (base_addr != 0xC000) {
-        log_info("LOCI ROM swap: ignored base $%04X (only $C000 supported in 34ad)",
+        log_info("LOCI ROM swap: ignored base $%04X (only $C000 / $A000 supported)",
                  base_addr);
         return true;
     }

@@ -798,7 +798,7 @@ Référence : `docs/control_protocol.md`
 ### Sprint 36b: Game compatibility regression suite (v1.16.77-alpha) - DONE
 - [x] `tests/integration/test_game_compat.sh` — boote 7 titres Oric commerciaux depuis OricProgramsLib et vérifie signature distinctive d'intro
 - [x] Cible `make test-game-compat`
-- [x] 7/7 PASS : manic-miner, hopper, breakout, harrier-attack, atlantis, oric-trek, tyrann
+- [x] 15/15 PASS (étendu de 7 → 15 titres en v1.16.78-alpha) : manic-miner, hopper, breakout, harrier-attack, atlantis, oric-trek, tyrann, zaxxon, kong, cobra, exocet, alien-attack, colditz, mr-wimpy, chess-ii
 - [x] Skip gracieux si `ORIC_PROGRAMS_LIB` absent
 - [x] Item dormant phase 4 « Game compatibility testing » coché
 

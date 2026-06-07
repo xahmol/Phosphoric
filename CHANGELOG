@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.78-alpha] - 2026-06-07
+
+### Sprint 36b+ — Game compat suite étendue 7 → 15 titres
+
+Doublement de la suite de régression compatibilité.
+
+#### Added — 8 nouveaux titres
+
+| Slug | Signature attendue | Notes |
+|------|--------------------|-------|
+| zaxxon | `INDESTRUCTIBLE` | Sega arcade port, HIRES + PSG |
+| kong | `WHAT BARREL LEVEL` | Donkey Kong clone |
+| cobra | `N O R S O F T` | NORSOFT, P. Marti |
+| exocet | `SINK THE  ENEMY SHIPS` | gameplay loop visible |
+| alien-attack | `Do you want instructions` | space shooter classique |
+| colditz | `VOULEZ-VOUS LES INSTRUCTIONS` | Marcel Lejeune, Theoric 1985 |
+| mr-wimpy | `MR WIMPY` | Ocean Software 1984 |
+| chess-ii | `CHESS II` | S.J. Laws & G.M. Phillips |
+
+Couverture étoffée : un peu de tout (BASIC + machine code, FR + EN,
+puzzle + arcade + chess + shooter). 15/15 PASS.
+
+#### Tests
+
+- 499 tests unitaires PASS.
+- 13/13 scenarios E2E LOCI/IPC PASS.
+- **15/15 game compatibility PASS** sur OricProgramsLib.
+
+---
+
 ## [1.16.77-alpha] - 2026-06-07
 
 ### Sprint 36b — Game compatibility regression suite

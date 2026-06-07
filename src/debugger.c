@@ -475,6 +475,97 @@ static void show_psg_state(emulator_t* emu) {
            psg->env_volume, psg->env_holding ? "(holding)" : "");
 }
 
+/* Sprint 34d2 P1-C — WD1793 Microdisc FDC + 4 drives mount info. */
+static void show_disk_state(emulator_t* emu) {
+    if (!emu->has_microdisc) {
+        printf("  Microdisc: not active (use --disk-rom roms/microdis.rom)\n");
+        return;
+    }
+    microdisc_t* md = &emu->microdisc;
+    fdc_t* fdc = &md->fdc;
+    printf("  Microdisc WD1793 State:\n");
+    printf("    CTRL=$%02X  INTRQ=%s  DRQ=%s\n",
+           md->status,
+           md->intrq == 0x00 ? "asserted" : "clear",
+           md->drq   == 0x00 ? "asserted" : "clear");
+    printf("    Decoded: diskrom=%d romdis=%d intena=%d drive=%c side=%d\n",
+           md->diskrom, md->romdis, md->intena, 'A' + md->drive, md->side);
+    printf("  FDC registers:\n");
+    printf("    CMD=$%02X  STATUS=$%02X  TRK=$%02X SEC=$%02X DATA=$%02X DIR=%d\n",
+           fdc->command, fdc->status, fdc->track, fdc->sector,
+           fdc->data, fdc->direction);
+    printf("    Physical: c_track=$%02X c_sector=$%02X side=%d  cur_offset=$%04X/$%04X\n",
+           fdc->c_track, fdc->c_sector, fdc->side,
+           fdc->cur_offset, fdc->cur_sector_len);
+    printf("    Delays:   drq=%d intrq=%d\n",
+           fdc->delayed_drq, fdc->delayed_int);
+    printf("  Drives:\n");
+    for (int i = 0; i < 4; i++) {
+        if (md->disk_data[i]) {
+            printf("    %c: %u bytes, %d tracks, %d sectors\n",
+                   'A' + i, md->disk_size[i],
+                   md->disk_tracks[i], md->disk_sectors[i]);
+        } else {
+            printf("    %c: (unmounted)\n", 'A' + i);
+        }
+    }
+}
+
+/* Sprint 34d2 P1-D — ACIA 6551 serial registers + signals + FIFO. */
+static void show_acia_state(emulator_t* emu) {
+    acia6551_t* a = &emu->acia;
+    printf("  ACIA 6551 State:\n");
+    printf("    TDR=$%02X RDR=$%02X  STATUS=$%02X  CMD=$%02X  CTRL=$%02X\n",
+           a->tdr, a->rdr, a->status, a->command, a->control);
+    printf("    Frame: %u bits  baud=%u Hz  data_mask=$%02X%s\n",
+           a->framebits, a->baud_rate, a->bitmask,
+           a->v23_mode ? "  V23(asym 1200/75)" : "");
+    printf("    Flags: tx_pending=%d rx_full=%d irq_line=%d%s\n",
+           a->tx_pending, a->rx_full, a->irq_line,
+           a->irq_on_rdrf ? "  (irq-on-rdrf)" : "");
+    printf("    Signals: DCD=%d DSR=%d CTS=%d\n", a->dcd, a->dsr, a->cts);
+    printf("    Timing: tx=%d/%d cyc  rx=%d/%d cyc\n",
+           a->tx_cycles, a->tx_reload, a->rx_cycles, a->rx_reload);
+    if (a->rx_fifo_size > 0) {
+        printf("    RX FIFO: %d/%d bytes (head=%d tail=%d)\n",
+               a->rx_fifo_count, a->rx_fifo_size,
+               a->rx_fifo_head, a->rx_fifo_tail);
+    } else {
+        printf("    RX FIFO: disabled (1-byte mode)\n");
+    }
+    printf("    Backend: %s  Trace: %s\n",
+           a->backend ? "attached" : "none",
+           a->trace_file ? "active" : "off");
+}
+
+/* Sprint 34d2 P1-E — Cassette tape state (position, length, status). */
+static void show_tape_state(emulator_t* emu) {
+    printf("  Tape State:\n");
+    if (!emu->tape_loaded) {
+        printf("    No tape loaded (use -t FILE)\n");
+        return;
+    }
+    int pos = emu->tapeoffs;
+    int len = emu->tapelen;
+    double pct = len > 0 ? 100.0 * pos / len : 0.0;
+    printf("    Position: %d / %d bytes (%.1f%%)\n", pos, len, pct);
+    printf("    Tape path: %s\n", emu->tape_path ? emu->tape_path : "(memory only)");
+    printf("    Status: %s%s%s\n",
+           emu->tape_syncstack >= 0 ? "[sync loop active] " : "",
+           emu->tape_readbyte_active ? "[CLOAD reading] " : "",
+           emu->fastload_pending ? "[fastload pending] " : "");
+    /* Preview the next 16 bytes if available, useful to see the header type. */
+    if (pos < len && emu->tapebuf) {
+        int show = (len - pos) < 16 ? (len - pos) : 16;
+        printf("    Next %d bytes:", show);
+        for (int i = 0; i < show; i++) printf(" %02X", emu->tapebuf[pos + i]);
+        printf("\n");
+    }
+    if (emu->csave_file) {
+        printf("    CSAVE: active (capturing to .TAP file)\n");
+    }
+}
+
 static void show_help(void) {
     printf("\n  Debugger Commands:\n");
     printf("  ─────────────────────────────────────────────────\n");
@@ -499,6 +590,9 @@ static void show_help(void) {
     printf("  wd n              Delete watchpoint #n\n");
     printf("  via               Show VIA 6522 state\n");
     printf("  psg               Show PSG AY-3-8910 state\n");
+    printf("  disk / fdc        Show Microdisc WD1793 + 4 drives\n");
+    printf("  acia / serial     Show ACIA 6551 registers + signals + FIFO\n");
+    printf("  tape / cassette   Show tape position, status, next bytes\n");
     printf("  stack             Show stack contents\n");
     printf("  set reg val       Set register (A,X,Y,SP,PC,P)\n");
     printf("  sym [name|addr]   List symbols / resolve name or address\n");
@@ -828,6 +922,18 @@ static void process_repl_line(debugger_t* dbg, emulator_t* emu, const char* line
         /* ── PSG STATE ──────────────────────────────────── */
         else if (strcmp(cmd, "psg") == 0) {
             show_psg_state(emu);
+        }
+        /* ── DISK / FDC STATE ──────────────────────────── */
+        else if (strcmp(cmd, "disk") == 0 || strcmp(cmd, "fdc") == 0) {
+            show_disk_state(emu);
+        }
+        /* ── ACIA 6551 STATE ───────────────────────────── */
+        else if (strcmp(cmd, "acia") == 0 || strcmp(cmd, "serial") == 0) {
+            show_acia_state(emu);
+        }
+        /* ── TAPE / CASSETTE STATE ─────────────────────── */
+        else if (strcmp(cmd, "tape") == 0 || strcmp(cmd, "cassette") == 0) {
+            show_tape_state(emu);
         }
         /* ── STACK ──────────────────────────────────────── */
         else if (strcmp(cmd, "stack") == 0) {

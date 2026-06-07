@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.68-alpha] - 2026-06-07
+
+### Sprint 34d2 — Debug REPL : commandes `disk` / `acia` / `tape`
+
+Items P1-C, P1-D, P1-E de l'audit gaps debug post-LOCI
+(`docs/CR/2026-06-07_Debug_Gaps_Audit_Post_LOCI.md`).
+
+#### Added — `disk` / `fdc` (P1-C)
+
+Inspection live du Microdisc WD1793 + 4 drives :
+- CTRL register + decoded bits (diskrom, romdis, intena, drive, side)
+- INTRQ / DRQ asserted / clear
+- 6 registres FDC (CMD, STATUS, TRK, SEC, DATA, DIR)
+- Physical state (c_track, c_sector, side, cur_offset / sec_len)
+- Delayed DRQ / INTRQ counters
+- 4 drives mount info (taille / tracks / sectors)
+
+#### Added — `acia` / `serial` (P1-D)
+
+Inspection live de l'ACIA 6551 :
+- 5 registres (TDR, RDR, STATUS, CMD, CTRL)
+- Frame format décodé (bits, baud, data mask, V23 asym mode)
+- Flags internes (tx_pending, rx_full, irq_line, irq_on_rdrf)
+- Signaux externes DCD / DSR / CTS
+- Timing TX/RX (cycles courants / reload)
+- RX FIFO state (count/size/head/tail)
+- Backend status (attached / none) + trace file status
+
+#### Added — `tape` / `cassette` (P1-E)
+
+Inspection live de l'état cassette :
+- Position byte courant / longueur totale + pourcentage
+- Path TAP / status (sync loop, CLOAD reading, fastload pending)
+- Preview des 16 prochains octets (utile pour voir le header type)
+- CSAVE status si actif
+
+#### Aliases
+
+Chaque commande accepte 2 noms pour réduire les frictions : `disk`/`fdc`,
+`acia`/`serial`, `tape`/`cassette`.
+
+#### Tests
+
+- 499 tests unitaires PASS (inchangé — fonctions REPL non testées en
+  unitaire, smoke test live).
+- 5/5 scenarios E2E PASS via `make test-loci-e2e`.
+
+#### Smoke test
+```
+dbg> disk
+  Microdisc WD1793 State:
+    CTRL=$00  INTRQ=clear  DRQ=clear
+    Decoded: diskrom=1 romdis=1 intena=0 drive=A side=0
+  FDC registers:
+    CMD=$00  STATUS=$00  TRK=$00 SEC=$00 DATA=$00 DIR=0
+  Drives:
+    A: 696320 bytes, 80 tracks, 17 sectors
+    B: (unmounted)
+```
+
+---
+
 ## [1.16.67-alpha] - 2026-06-07
 
 ### Sprint 34d1 — Debug : fix `0x` parser symboles + résolution opérandes disasm

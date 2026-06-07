@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.46-alpha] - 2026-06-07
+
+### Sprint 34at — CSAVE ORIC-1 fixé via Option A sénior
+
+Suite à la review approuvée (`docs/CR/2026-06-07_Senior_BASIC10_CSAVE_*`).
+
+#### Fixed — `csave_end` ORIC-1 sur la sortie réelle
+
+`$E7FE` était du **code mort** sur le chemin CSAVE : `JSR $E804` à
+`$E7F5` appelle une routine qui termine par `JMP $EBD0` (warm-start).
+Le `RTS` à `$E7FE` jamais atteint (vérifié via PCLOG dans `cpu_step`).
+
+```c
+.csave_end = 0xE80A,   /* JMP $EBD0 = sortie inconditionnelle */
+```
+
+Atmos `$E93C` inchangé (validé par sénior).
+
+#### Added — snapshot du staging buffer à `writefileheader_entry`
+
+Pitfall sénior : la boucle data ORIC-1 réutilise `$5F/$60` comme work
+pointer. Lire au `csave_end` donnerait l'END au lieu du START. Snapshot
+au trap `writefileheader_entry` (`$E57B` ORIC-1, `$E607` Atmos) capture
+9 bytes header + 16 bytes filename **avant** la mutation.
+
+#### Added — `csave_in_progress` guard
+
+`$E80A` est sur un chemin partagé CSAVE/CLOAD (`JSR $E804 = ClrTapeStatus`).
+Sans guard, `csave_end` fire 2× par CSAVE+CLOAD turn → rebuild corrompu
+côté CLOAD. Booléen set au writeleader, cleared au premier `csave_end`.
+
+#### Validation
+
+```
+ORIC-1 : CSAVE "T2" → CLOAD "T2" → LIST : 10 PRINT "HI" ✓
+Atmos  : régression OK
+```
+
+- 473 tests pass, 0 régression
+- AIGLE.TAP OK
+
+---
+
 ## [1.16.45-alpha] - 2026-06-07
 
 ### Sprint 34as — Suggestions sénior follow-up : MBR + CSAVE header source

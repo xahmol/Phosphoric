@@ -539,6 +539,18 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] Validé : CALL 1280 manuel sur binaire test = OK (L10 = "Ready" pas erreur)
 - [x] 327 tests pass
 
+### Sprint 34at: CSAVE ORIC-1 fix via Option A sénior (v1.16.46-alpha) - DONE
+- [x] Diagnostic Phosphoric vs Oricutron via Senior_Followup doc + 48 bytes
+- [x] PCLOG inconditionnel dans cpu_step prouve $E7FE jamais, $E80A oui
+- [x] Sénior valide Option A après désasm indépendant : csave_end → $E80A
+- [x] writefileheader_entry trap nouveau (snapshot AVANT mutation $5F/$60)
+- [x] csave_header_snap[9] + csave_fname_snap[17] + csave_snap_valid
+- [x] csave_in_progress guard contre re-entry CLOAD sur shared $E80A
+- [x] Atmos $E93C non touché (validé sénior)
+- [x] Round-trip ORIC-1 CSAVE/CLOAD/LIST validé E2E auto
+- [x] Régression Atmos OK
+- [x] 473 tests pass, 0 régression
+
 ### Sprint 34as: Follow-up review sénior — MBR + CSAVE staging buffer (v1.16.45-alpha) - DONE
 - [x] MBR parser : détection auto, partition_lba propagé via read/write_sector
 - [x] Types FAT supportés : 01/04/06/0B/0C/0E/1B/1C

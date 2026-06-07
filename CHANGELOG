@@ -5,6 +5,87 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.75-alpha] - 2026-06-07
+
+### Sprint 35c — `bread` binary framing + Python smoke client + hardening
+
+Avec l'annonce d'OricForge livrant `phos_client.py`, le sprint 35c
+livre les 3 items convenus.
+
+#### Added — `bread <addr> <len>` (length-prefixed binary read)
+
+Variante binaire de `read` pour les memory inspectors ≥ 4 KB où le
+hex ASCII (3 caractères par byte) devient trop coûteux. Wire format :
+
+```
+> bread $0500 $40\n
+OK bread len=64\n
+<64 raw bytes>\n
+```
+
+Limite : 1..65536 octets. Le client doit basculer en raw-read mode
+pour la section binaire (cf. `phos_smoke_client.py::bread`). Newline
+trailing pour permettre la resync d'un reader line-based.
+
+#### Added — `tests/integration/phos_smoke_client.py`
+
+Mini-client Python de référence (~250 LOC, stdlib only). Couvre la
+même surface protocole que `phos_client.py` d'OricForge sur un budget
+code plus serré pour vivre dans le repo Phosphoric sans dépendance
+tierce.
+
+Architecture :
+- Thread reader dédié sur stdout, démuxe REP vs EVT.
+- `wait_ready()` / `wait_stopped()` / `wait_event(kind)`.
+- `cmd()` / `ok()` request/reply synchrone avec timeout.
+- Wrappers haut-niveau : `regs()`, `read()`, `bread()`, `peek()`,
+  `step()`, `cont()`, `pause()`, etc.
+- Coordination reader/main pour `bread` : flag
+  `_reader_yield_after_next` qui force le reader à sortir après
+  délivraison de la REP, libérant le pipe pour la lecture binaire.
+
+Utilisable comme script standalone (`./phos_smoke_client.py
+./oric1-emu -r roms/basic11b.rom`) ou comme module
+(`from phos_smoke_client import PhosClient`).
+
+#### Added — Hardening serveur
+
+- **SIGPIPE ignoré** quand `--control` actif (sinon une mort prématurée
+  du parent IDE termine Phosphoric brutalement). On détecte la perte
+  du pipe via `ferror(stdout)` et on shut down proprement.
+- Check `ferror(stdout)` dans `control_emit_ready` et
+  `control_poll_pause` → main loop sort si stdout est cassé.
+
+#### Caps update
+
+`hello` reply : `caps=…,bread`
+
+#### Doc updates
+
+- `docs/control_protocol.md` : section sur le parsing hex (les
+  longueurs sont hex, pas decimal — piège classique) et bread.
+
+#### Régression E2E
+
+Nouveau sous-test `35c Python smoke client (handshake + bread)` qui
+lance le script Python contre l'emu. Skip gracieux si python3 absent.
+**12/12 scenarios E2E PASS**.
+
+#### Pour OricForge
+
+- Capability `bread` activée sur main, prêt à brancher dans
+  `phos_client.py`.
+- Le mini-client `phos_smoke_client.py` peut servir de baseline pour
+  comparer avec la version OricForge — il vit dans le repo Phosphoric
+  et exerce le protocole en CI à chaque PR.
+
+#### Tests
+
+- 499 tests unitaires PASS.
+- **12/12 scenarios E2E PASS** via `make test-loci-e2e`.
+
+---
+
 ## [1.16.74-alpha] - 2026-06-07
 
 ### Sprint 35b — Control protocol : watchpoints, raster, load-*, disasm, halt

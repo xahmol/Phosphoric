@@ -795,11 +795,14 @@ Référence : `docs/control_protocol.md`
 - [ ] `bread <addr> <len>` (framing binaire) — reporté à 35c selon scope
 - [ ] Client de référence Python (livré par OricForge en parallèle)
 
-### Sprint 35c: Hardening + intégration OricForge (à venir)
-- [ ] `bread <addr> <len>` framing binaire pour les memory inspectors ≥ 32 KB
-- [ ] Framing strict (numéros de séquence, ACK)
-- [ ] Server-side timeouts
-- [ ] Client Python intégré dans tests/integration/
+### Sprint 35c: Hardening + intégration OricForge (v1.16.75-alpha) - DONE
+- [x] `bread <addr> <len>` framing binaire length-prefixed (1..65536 octets)
+- [x] Client Python `tests/integration/phos_smoke_client.py` (~250 LOC)
+- [x] Scenario E2E `35c Python smoke client (handshake + bread)`
+- [x] Hardening : SIGPIPE ignoré + ferror(stdout) check pour shutdown propre
+- [x] Doc protocole : parsing hex (piège decimal vs hex sur les lengths)
+- [ ] Framing strict (numéros de séquence, ACK) — pas demandé par OricForge, différé tant que pas besoin
+- [ ] Server-side timeouts — pas demandé, le client gère ses timeouts
 
 ### Sprint 34d: Audit gaps debug post-LOCI — backlog (v1.16.67-71) - DONE
 Référence : `docs/CR/2026-06-07_Debug_Gaps_Audit_Post_LOCI.md`

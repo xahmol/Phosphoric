@@ -260,6 +260,23 @@ if skip_if_missing "$NATIVE_ROM"; then
         echo "$OUT6" | head -10 | sed 's/^/    /'
         fail=$((fail+1))
     fi
+
+    # Sprint 35c — Python smoke client (handshake + REP/EVT mux + bread)
+    if command -v python3 >/dev/null 2>&1; then
+        if timeout 10 python3 ./tests/integration/phos_smoke_client.py \
+                "$EMU" -r "$NATIVE_ROM" >/dev/null 2>&1; then
+            echo "  [PASS] 35c Python smoke client (handshake + bread)"
+            pass=$((pass+1))
+        else
+            echo "  [FAIL] 35c Python smoke client"
+            timeout 5 python3 ./tests/integration/phos_smoke_client.py \
+                "$EMU" -r "$NATIVE_ROM" 2>&1 | tail -10 | sed 's/^/    /'
+            fail=$((fail+1))
+        fi
+    else
+        echo "  [SKIP] 35c Python smoke client (python3 not available)"
+        skipped=$((skipped+1))
+    fi
 fi
 
 echo ""

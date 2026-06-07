@@ -1,12 +1,13 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.74-alpha
+Current Version: 1.16.75-alpha
 Release Date: 2026-06-07
-Status: Alpha (Sprint 35b — watch/raster/load-*/disasm + EVT halt ; 11/11 E2E ; 499 tests)
+Status: Alpha (Sprint 35c — bread binaire + Python smoke client + SIGPIPE hardening ; 12/12 E2E ; 499 tests)
 
 Version History:
 ----------------
+- 1.16.75-alpha (2026-06-07): Sprint 35c — **`bread` binaire + `phos_smoke_client.py` + SIGPIPE hardening** (3 items convenus avec OricForge ; mini-client Python ~250 LOC stdlib only ; SIGPIPE ignoré + ferror(stdout) shutdown propre), 499 tests + 12 E2E PASS
 - 1.16.74-alpha (2026-06-07): Sprint 35b — **watch/raster/load-tap/load-rom/load-sym/disasm + EVT halt jam|cycle_limit** (`last_break_reason` pour précision `EVT stopped`, caps étendu), 499 tests + 11 E2E PASS
 - 1.16.73-alpha (2026-06-07): Sprint 35a freeze — **hello/peek/step-out + async pause-while-running** (réponse aux 4 items pre-freeze OricForge ; `ERR busy` pour cmds non-{pause,quit} pendant continue), 499 tests + 7 E2E PASS
 - 1.16.72-alpha (2026-06-07): Sprint 35a — **IPC control mode OricForge** (CLI `--control`, protocole text-line stdin/stdout, logs sur stderr, 12 commandes, 2 events ; régression E2E ajoutée), 499 tests + 6 E2E PASS

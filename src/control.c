@@ -22,6 +22,7 @@
 #include "storage/disk.h"
 #include <sys/select.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -75,6 +76,9 @@ static void emit_evt(const char* fmt, ...) {
  * IDE, no command races. */
 bool control_poll_pause(emulator_t* emu) {
     if (!emu->control_mode) return false;
+    /* Also surface a broken stdout to the main loop so we don't keep
+     * running a session no one is listening to. */
+    if (ferror(stdout)) { emu->running = false; return true; }
     fd_set fds;
     FD_ZERO(&fds);
     FD_SET(STDIN_FILENO, &fds);
@@ -112,8 +116,15 @@ bool control_poll_pause(emulator_t* emu) {
 }
 
 void control_emit_ready(emulator_t* emu) {
+    /* Sprint 35c hardening — install SIGPIPE handler so a dead IDE
+     * stdout pipe doesn't terminate us; we detect failed writes via
+     * ferror(stdout) and shut down cleanly. Idempotent. */
+    signal(SIGPIPE, SIG_IGN);
     emit_evt("ready pc=%04X cycles=%llu version=%s",
              emu->cpu.PC, (unsigned long long)emu->cpu.cycles, EMU_VERSION);
+    /* If the IDE has already closed its end before we got here, ferror
+     * is set; surface it so the main loop exits instead of looping. */
+    if (ferror(stdout)) emu->running = false;
 }
 
 void control_emit_stopped(emulator_t* emu, const char* reason) {
@@ -195,6 +206,38 @@ static void cmd_read(emulator_t* emu, const char* addr_s, const char* len_s) {
         fprintf(stdout, " %02X",
                 memory_read(&emu->memory, (uint16_t)(addr + i)));
     }
+    fputc('\n', stdout);
+    fflush(stdout);
+}
+
+/* Sprint 35c — length-prefixed binary read. Up to 64 KB per call.
+ * Wire format:
+ *   client → `bread $XXXX <len>\n`
+ *   server → `OK bread len=<len>\n`
+ *   server → <len raw bytes>
+ *   server → `\n`
+ * The trailing newline lets a line-based client reader resync after
+ * the binary chunk. The client must temporarily switch to raw-read
+ * mode for the binary section (see phos_smoke_client.py::bread). */
+static void cmd_bread(emulator_t* emu, const char* addr_s, const char* len_s) {
+    uint16_t addr;
+    uint32_t len;
+    if (!parse_u16(addr_s, &addr) || !parse_hex(len_s, &len)) {
+        reply_err("bread: usage `bread <addr> <len>`");
+        return;
+    }
+    if (len == 0 || len > 0x10000) {
+        reply_err("bread: len must be 1..65536");
+        return;
+    }
+    /* Stage the buffer first, then emit the OK + binary in a single
+     * flush, so a partial write can't interleave with another reply. */
+    static uint8_t buf[0x10000];
+    for (uint32_t i = 0; i < len; i++) {
+        buf[i] = memory_read(&emu->memory, (uint16_t)(addr + i));
+    }
+    fprintf(stdout, "OK bread len=%u\n", len);
+    fwrite(buf, 1, len, stdout);
     fputc('\n', stdout);
     fflush(stdout);
 }
@@ -418,7 +461,7 @@ static void cmd_reset(emulator_t* emu) {
  * an existing command or event changes shape (additive `caps=` extensions
  * do NOT bump the version). */
 #define CONTROL_PROTO_VERSION 1
-#define CONTROL_PROTO_CAPS    "step-out,peek,hello,async-pause,watch,raster,load-tap,load-rom,load-sym,disasm"
+#define CONTROL_PROTO_CAPS    "step-out,peek,hello,async-pause,watch,raster,load-tap,load-rom,load-sym,disasm,bread"
 
 static void cmd_hello(const char* arg1, const char* arg2) {
     (void)arg1; (void)arg2;
@@ -551,6 +594,9 @@ void control_repl(emulator_t* emu) {
         }
         else if (strcmp(cmd, "read") == 0) {
             cmd_read(emu, arg1, arg2);
+        }
+        else if (strcmp(cmd, "bread") == 0) {
+            cmd_bread(emu, arg1, arg2);
         }
         else if (strcmp(cmd, "write") == 0) {
             cmd_write(emu, arg1, arg2, save);

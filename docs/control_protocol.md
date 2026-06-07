@@ -11,8 +11,11 @@ on stdin/stdout. Logs go to **stderr** so stdout stays a clean channel.
 | REP       | `OK ` or `ERR ` | Emu → client : reply to a CMD |
 | EVT       | `EVT ` | Emu → client : spontaneous (e.g. break hit) |
 
-All values are space-separated `key=value` tokens. Hex numbers accept
-`$XXXX`, `0xXXXX`, or bare `XXXX` (4 chars max for u16, 2 for u8).
+All values are space-separated `key=value` tokens. **All numeric
+arguments are parsed as hex** (`$XXXX`, `0xXXXX`, or bare `XXXX`).
+Lengths follow the same rule — `read $F800 100` means 256 bytes, not
+100. Format your client to use `${value:X}` explicitly to avoid
+decimal-vs-hex surprises.
 
 ## Lifecycle
 
@@ -32,7 +35,8 @@ All values are space-separated `key=value` tokens. Hex numbers accept
 | `hello [client=… proto=…]` | `OK server=phosphoric/X.Y proto=N caps=…` | recommended at session start |
 | `regs` | `OK A=XX X=XX Y=XX SP=XX P=XX PC=XXXX cycles=N` | snapshot |
 | `set <reg> <val>` | `OK` | reg = A/X/Y/SP/P/PC |
-| `read <addr> <len>` | `OK XX XX XX ...` | bulk hex bytes, len ≤ 4096 |
+| `read <addr> <len>` | `OK XX XX XX ...` | bulk hex bytes, len ≤ 4096 (HEX!) |
+| `bread <addr> <len>` | `OK bread len=N\n<N raw bytes>\n` | length-prefixed binary, len ≤ 65536 |
 | `write <addr> <b0> <b1> ...` | `OK count=N` | at least one byte |
 | `peek <subsystem>` | `OK k=v k=v ...` | sub = `via`/`psg`/`disk`/`acia`/`tape`/`loci` |
 | `break <addr>` | `OK id=N addr=XXXX` | adds PC breakpoint |

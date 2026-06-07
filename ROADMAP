@@ -773,6 +773,13 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] STAT reporte NOT_READY si pas de tape
 - [x] 10 nouveaux tests test-loci
 
+### Sprint 34az: ROMDIS dynamique — boot Sedoric COMPLET (v1.16.54-alpha) - DONE
+- [x] Bug identifié via senior review : `basic_rom_disabled` hardcodé true
+- [x] Fix : `romdis = (CTRL & 0x02) == 0` dynamique, miroir microdisc natif
+- [x] E2E : menu SEDORIC DOS V4.0 affiché complet (10 options), identique au boot natif Microdisc
+- [x] Test différentiel : boot natif + boot LOCI → même écran au cycle 35M
+- [x] 484 tests PASS
+
 ### Sprint 34ay: WD1793 INTRQ asynchrone — boot Sedoric stage 1 (v1.16.53-alpha) - DONE
 - [x] `loci_fdc_set_intrq` → cpu_irq_set(IRQF_DISK) si INTENA actif
 - [x] `loci_fdc_clr_intrq` → cpu_irq_clr(IRQF_DISK) symétrique

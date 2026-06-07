@@ -50,7 +50,10 @@ SOURCES = src/main.c \
           src/io/mcp40.c \
           src/io/cassette.c \
           src/io/microdisc.c \
-          src/io/loci.c \
+          src/io/loci_core.c \
+          src/io/loci_fs.c \
+          src/io/loci_bus.c \
+          src/io/loci_boot.c \
           src/io/loci_sdimg.c \
           src/io/acia6551.c \
           src/io/serial_backend.c \
@@ -282,7 +285,9 @@ test-symbols: $(TEST_SYMBOLS_SRCS)
 	@$(CC) $(CFLAGS) $(TEST_SYMBOLS_SRCS) $(LDFLAGS) -o test_symbols
 	@./test_symbols
 
-TEST_LOCI_SRCS = tests/unit/test_loci.c src/io/loci.c src/io/loci_sdimg.c \
+TEST_LOCI_SRCS = tests/unit/test_loci.c \
+                 src/io/loci_core.c src/io/loci_fs.c \
+                 src/io/loci_bus.c src/io/loci_boot.c src/io/loci_sdimg.c \
                  src/utils/logging.c src/storage/disk.c src/storage/sedoric.c \
                  src/cpu/cpu6502.c src/cpu/opcodes.c src/cpu/addressing.c \
                  src/memory/memory.c src/memory/banking.c

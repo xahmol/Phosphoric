@@ -773,12 +773,12 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] STAT reporte NOT_READY si pas de tape
 - [x] 10 nouveaux tests test-loci
 
-### Sprint 34c: Backlog issu de la senior review post-34b5 - IN PROGRESS
+### Sprint 34c: Backlog issu de la senior review post-34b5 - DONE
 Référence : `docs/CR/2026-06-07_Senior_LOCI_Pipe_Review_Post_34b5.md`
 - [x] R1 — Fix `op_readdir` POSIX (mauvais base path pour `stat`) — `loci.c:1549-1551`, livré v1.16.62-alpha
 - [x] R2 — Durcir `resolve_path` (tokeniser `/`, rejeter `..` exact, plus de `strstr`) — `loci.c:702-718`, livré v1.16.62-alpha
 - [x] R3 — Persister écritures DSK en mode raw (helper `dsk_flush`, no-op si MFM_DISK détecté) — livré v1.16.63-alpha
-- [ ] R4 — Split `loci.c` (2276 LOC) en 4 TUs : `loci_core` / `loci_fs` / `loci_bus` / `loci_boot` — M (~1 jour, refactor mécanique)
+- [x] R4 — Split `loci.c` (2380 LOC) en 4 TUs : `loci_core` (666) / `loci_fs` (904) / `loci_bus` (342) / `loci_boot` (104) + `loci_internal.h` (129) — livré v1.16.66-alpha
 - [x] R5 — Tests chemins d'erreur API ops (8 nouveaux EBADF/EINVAL/ENOENT/EACCES) + fix bug `op_rename` découvert au passage — livré v1.16.64-alpha
 - [x] Hors R1-R5 : `op_uname` release tracke `EMU_VERSION` — livré v1.16.65-alpha
 - [x] Hors R1-R5 : `loci_overlay_buf` déporté vers `emulator_t`, free dans `emulator_cleanup` — livré v1.16.65-alpha

@@ -1,12 +1,13 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.65-alpha
+Current Version: 1.16.66-alpha
 Release Date: 2026-06-07
-Status: Alpha (Sprint 34c hardening — `op_uname` release dyn + `loci_overlay_buf` propre ; 498 tests + 5 E2E)
+Status: Alpha (Sprint 34c R4 — split mécanique `loci.c` 2380 LOC → 4 TUs ; sprint 34c CLOS ; 498 tests + 5 E2E)
 
 Version History:
 ----------------
+- 1.16.66-alpha (2026-06-07): Sprint 34c R4 — **Split mécanique `loci.c` → 4 TUs** (`loci_core` 666 / `loci_fs` 904 / `loci_bus` 342 / `loci_boot` 104 + `loci_internal.h` 129 ; sprint 34c clos), 498 tests + 5 E2E PASS
 - 1.16.65-alpha (2026-06-07): Sprint 34c hardening — **`op_uname` release tracke `EMU_VERSION` + `loci_overlay_buf` quitte le `static`** (déporté vers `emulator_t`, free dans `emulator_cleanup`), 498 tests + 5 E2E PASS
 - 1.16.64-alpha (2026-06-07): Sprint 34c R5 — **Tests errno + fix `op_rename`** (8 nouveaux tests EBADF/EINVAL/ENOENT/EACCES ; bug latent `pop_zstring`/`xstack_zero` cassant `op_rename` POSIX+SDIMG corrigé), 497 tests + 5 E2E PASS
 - 1.16.63-alpha (2026-06-07): Sprint 34c R3 — **Persistance écritures DSK raw** (`dsk_flush` helper, no-op si MFM_DISK détecté ; SAVE survit à la sortie de l'émulateur en mode raw), 488 tests + 5 E2E PASS

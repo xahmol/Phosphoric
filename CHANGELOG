@@ -5,6 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.66-alpha] - 2026-06-07
+
+### Sprint 34c R4 — Split mécanique `loci.c` (2380 LOC) → 4 TUs
+
+Dernier item de la senior review post-34b5
+(`docs/CR/2026-06-07_Senior_LOCI_Pipe_Review_Post_34b5.md`).
+
+#### Changed
+
+`src/io/loci.c` (monolithe 2380 LOC) supprimé. Code splitté en 4
+unités de compilation distinctes selon les marqueurs de section
+existants :
+
+| Nouveau fichier | Lignes | Contenu |
+|-----------------|-------:|---------|
+| `src/io/loci_core.c` | 666 | init/lifecycle, action button, HID, errno/xstack helpers, API return helpers, ops système (PIX_XREG, RNG, CLOCK, CLK_*), xram DMA, dispatch, bus interface (`loci_read`/`loci_write`/`loci_task`) |
+| `src/io/loci_fs.c` | 904 | File I/O (OPEN/CLOSE/READ_*/WRITE_*/LSEEK/UNLINK/RENAME), backend SDIMG, Dir API (OPENDIR/CLOSEDIR/READDIR/MKDIR), GETCWD/MOUNT/UMOUNT/UNAME |
+| `src/io/loci_bus.c` | 342 | TAP cassette + DSK WD1793 cycle-accurate (FDC callbacks, CTRL semantics) |
+| `src/io/loci_boot.c` | 104 | `op_mia_boot` + 7 stubs tuning Sprint 34au (`op_cpu_phi2`, `op_oem_codepage`, `op_stdin_opt`, `op_map_tune_*`) |
+| `include/io/loci_internal.h` | 129 | **Nouveau** header privé (non installé) avec les déclarations `extern` des helpers que les 4 TUs s'échangent (`api_return_*`, `xstack_*`, `pop_zstring*`, `resolve_path`, `map_errno`, etc.) |
+
+Total : 2145 lignes (vs 2380 d'origine, -235 lignes dues à la
+suppression des forward decls maintenant inutiles).
+
+#### Renamed
+
+5 helpers privés `tap_open/close` et `dsk_open/close/flush` renommés
+en `loci_tap_open/close` et `loci_dsk_open/close/flush`. Motif :
+`src/storage/tap.c` exporte déjà `tap_close()` publique ; le `static`
+masquait le conflit linker dans le monolithe, le passage en linkage
+extern oblige à disambiguer. Signatures identiques, zero call site
+externe (utilisés uniquement par `loci_core.c` et `loci_bus.c`).
+
+#### Contrats préservés
+
+- **Aucun changement de comportement.** Refactor mécanique pur.
+- API publique `include/io/loci.h` **inchangée**.
+- Structs `loci_t`, `emulator_t` **inchangées**.
+- Pas d'extraction de vtable (laissée à un sprint dédié comme le
+  recommande la senior review).
+
+#### Makefile
+
+`SOURCES` mis à jour : `src/io/loci.c` → `loci_core.c` + `loci_fs.c`
++ `loci_bus.c` + `loci_boot.c`. `TEST_LOCI_SRCS` aligné. Aucun autre
+changement au build system.
+
+#### Tests
+
+- **498 tests unitaires PASS**, 133 tests test-loci (inchangé).
+- **5/5 scenarios E2E PASS** via `make test-loci-e2e`.
+- Pas de warning nouveau au build (2 warnings préexistants déplacés
+  dans `loci_fs.c`, déjà identifiés dans la senior review).
+
+#### Bilan série 34c
+
+5 livrables (R1, R2, R3, R5, hardening, R4) sur 5 prévus + 2 hors
+recos. **3 bugs latents découverts et corrigés** (op_readdir sub-dir,
+DSK raw perte de données, op_rename impossible). Test-first
+(spécialement R5) a directement révélé un bug majeur. Pipe LOCI mûr,
+maintenable, sous régression automatisée.
+
+---
+
 ## [1.16.65-alpha] - 2026-06-07
 
 ### Sprint 34c hardening — `op_uname` release + `loci_overlay_buf` lifecycle

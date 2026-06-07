@@ -358,20 +358,22 @@ static bool loci_rom_swap_cb(void* ctx, const char* rom_path, uint16_t base_addr
         long sz = ftell(fp);
         fseek(fp, 0, SEEK_SET);
         if (sz <= 0 || sz > 16384) { fclose(fp); return false; }
-        /* Reuse Microdisc's overlay buffer if available, else allocate
-         * a dedicated one (lifecycle: emulator_cleanup not yet hooked,
-         * acceptable leak at shutdown). */
-        static uint8_t* loci_overlay_buf = NULL;
-        if (loci_overlay_buf) { free(loci_overlay_buf); loci_overlay_buf = NULL; }
-        loci_overlay_buf = (uint8_t*)malloc((size_t)sz);
-        if (!loci_overlay_buf) { fclose(fp); return false; }
-        if (fread(loci_overlay_buf, 1, (size_t)sz, fp) != (size_t)sz) {
-            free(loci_overlay_buf); loci_overlay_buf = NULL;
+        /* Sprint 34c hardening : buffer owned by emulator_t now (was a
+         * function-scope static with an "acceptable leak at shutdown"
+         * comment). Freed by emulator_cleanup. */
+        if (emu->loci_overlay_buf) {
+            free(emu->loci_overlay_buf);
+            emu->loci_overlay_buf = NULL;
+        }
+        emu->loci_overlay_buf = (uint8_t*)malloc((size_t)sz);
+        if (!emu->loci_overlay_buf) { fclose(fp); return false; }
+        if (fread(emu->loci_overlay_buf, 1, (size_t)sz, fp) != (size_t)sz) {
+            free(emu->loci_overlay_buf); emu->loci_overlay_buf = NULL;
             fclose(fp);
             return false;
         }
         fclose(fp);
-        emu->memory.overlay_rom         = loci_overlay_buf;
+        emu->memory.overlay_rom         = emu->loci_overlay_buf;
         emu->memory.overlay_rom_size    = (uint32_t)sz;
         emu->memory.overlay_active      = true;
         emu->memory.basic_rom_disabled  = true;   /* romdis = ROM disable signal */
@@ -826,6 +828,10 @@ static bool emulator_init(emulator_t* emu) {
 static void emulator_cleanup(emulator_t* emu) {
     if (emu->has_loci) {
         loci_cleanup(&emu->loci);
+    }
+    if (emu->loci_overlay_buf) {
+        free(emu->loci_overlay_buf);
+        emu->loci_overlay_buf = NULL;
     }
     if (emu->tui_mode) {
         tui_cleanup();

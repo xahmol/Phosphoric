@@ -33,6 +33,7 @@
 #define _XOPEN_SOURCE 500
 #endif
 
+#include "emulator.h"          /* EMU_VERSION (op_uname release field) */
 #include "io/loci.h"
 #include "io/loci_sdimg.h"
 #include "storage/sedoric.h"   /* sedoric_load — MFM_DISK header parser (34aw+) */
@@ -1652,9 +1653,13 @@ static void op_mkdir(loci_t* loci) {
 static void op_uname(loci_t* loci) {
     static const char machine[25]  = "Phosphoric Emulator     ";
     static const char version[9]   = "0.1     ";   /* build version */
-    static const char release[9]   = "1.16.27 ";
     static const char nodename[9]  = "oric    ";
     static const char sysname[17]  = "Phosphoric LOCI ";
+
+    /* Sprint 34c hardening : release field tracks EMU_VERSION instead of
+     * the historically frozen "1.16.27 " (fixed format: 8 chars padded). */
+    char release[9];
+    snprintf(release, sizeof(release), "%-8s", EMU_VERSION);
 
     xstack_zero(loci);
     if (!xstack_push_n(loci, machine,  sizeof(machine))  ||

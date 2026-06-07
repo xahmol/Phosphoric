@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.65-alpha] - 2026-06-07
+
+### Sprint 34c hardening — `op_uname` release + `loci_overlay_buf` lifecycle
+
+Issu de la senior review post-34b5 (2 items « hors R1-R5 »).
+
+#### Changed — `op_uname` release field tracks `EMU_VERSION`
+
+`op_uname` (`loci.c:1652-1672`) renvoyait un champ `release` hardcodé
+`"1.16.27 "`. Le 6502 voyait donc une version obsolète quand il
+appelait UNAME pour s'identifier. Désormais le champ est formaté
+dynamiquement avec `snprintf("%-8s", EMU_VERSION)` — toujours 8
+caractères, padding spaces à droite (format firmware-compatible).
+
+Nouveau test `test_uname_release_uses_emu_version` qui (a) vérifie
+le préfixe attendu et (b) garantit que la valeur n'est plus celle
+historiquement frozen.
+
+#### Changed — `loci_overlay_buf` quitte le `static` de `main.c`
+
+Le buffer alloué par `loci_rom_swap_cb` quand LOCI swap une ROM
+overlay (`main.c:364-374`) était un `static uint8_t*` avec un
+commentaire reconnaissant « acceptable leak at shutdown » et
+empêchant le test en isolation (état résiduel inter-tests si jamais
+le main est ré-entré).
+
+Déporté vers `emulator_t.loci_overlay_buf`. Free dans
+`emulator_cleanup` (`main.c:828-836`). Plus de leak, plus d'état
+caché, plus d'obstacle à la testabilité.
+
+#### Tests
+
+- **498 tests unitaires PASS** (497 + 1), 133 tests test-loci.
+- **5/5 scenarios E2E PASS** via `make test-loci-e2e`.
+
+---
+
 ## [1.16.64-alpha] - 2026-06-07
 
 ### Sprint 34c R5 — Tests chemins d'erreur API + fix `op_rename`

@@ -35,7 +35,7 @@
 #include "io/loci.h"
 #include "network/cast_server.h"
 
-#define EMU_VERSION "1.16.64-alpha"
+#define EMU_VERSION "1.16.65-alpha"
 
 /**
  * @brief ORIC machine model
@@ -220,6 +220,11 @@ typedef struct emulator_s {
      * Only active when --loci is passed; reserves MIA bus at $03A0-$03BF. */
     loci_t loci;
     bool   has_loci;
+    /* Sprint 34c hardening — owns the overlay ROM buffer that LOCI's
+     * rom_swap callback installs into memory.overlay_rom (was a static
+     * inside main.c with a comment acknowledging "acceptable leak at
+     * shutdown"). Freed by emulator_cleanup. */
+    uint8_t* loci_overlay_buf;
 
     /* TUI mode flag: when true, breakpoints route to the ncurses TUI
      * instead of the line-based REPL (build with TUI=1). */

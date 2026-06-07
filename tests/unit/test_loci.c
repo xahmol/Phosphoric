@@ -11,6 +11,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "../../include/emulator.h"   /* EMU_VERSION (test_uname release) */
 #include "../../include/io/loci.h"
 #include "../../include/utils/logging.h"
 #include "../../include/cpu/cpu6502.h"
@@ -1090,6 +1091,25 @@ TEST(test_uname_pushes_5_fields) {
     char buf[18] = {0};
     memcpy(buf, &l.xstack[l.xstack_ptr], 17);
     ASSERT_TRUE(strncmp(buf, "Phosphoric LOCI", 15) == 0);
+}
+
+/* Sprint 34c hardening — release field tracks EMU_VERSION rather than the
+ * historically frozen "1.16.27 " literal. */
+TEST(test_uname_release_uses_emu_version) {
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_write(&l, 0x03AF, LOCI_OP_UNAME);
+    /* Push order from firmware view (sysname pushed last → top of xstack):
+     *   xstack[ptr      .. ptr+16] = sysname  (17 bytes)
+     *   xstack[ptr+17   .. ptr+25] = nodename (9 bytes)
+     *   xstack[ptr+26   .. ptr+34] = release  (9 bytes)
+     */
+    char release[9] = {0};
+    memcpy(release, &l.xstack[l.xstack_ptr + 26], 8);
+    /* Should start with EMU_VERSION's leading chars ("1.16.64-alpha" → "1.16.64-"). */
+    ASSERT_TRUE(strncmp(release, EMU_VERSION, 8) == 0);
+    /* And NOT the frozen literal. */
+    ASSERT_TRUE(strncmp(release, "1.16.27", 7) != 0);
 }
 
 /* ── 34ag: USB HID stubs ─────────────────────────────────────── */
@@ -2594,6 +2614,7 @@ int main(void) {
     RUN(test_mkdir_creates_dir);
     RUN(test_closedir_bad_fd_ebadf);
     RUN(test_uname_pushes_5_fields);
+    RUN(test_uname_release_uses_emu_version);
     RUN(test_pix_xreg_kbd_sets_kbd_xram);
     RUN(test_pix_xreg_mou_sets_mou_xram);
     RUN(test_pix_xreg_pad_sets_pad_xram);

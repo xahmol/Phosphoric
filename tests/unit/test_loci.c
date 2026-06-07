@@ -622,6 +622,56 @@ TEST(test_umount_clears_slot) {
     ASSERT_EQ(l.regs[LOCI_REG_API_A], 0);
 }
 
+/* Sprint 34c R3 — raw .dsk mounts must flush their in-RAM image back
+ * to the host file at umount / cleanup so SAVEs survive an emulator
+ * exit. (MFM_DISK input stays session-only — covered by a separate
+ * limitation note in the CHANGELOG, not testable without a re-encoder.) */
+TEST(test_dsk_raw_writes_persisted_on_umount) {
+    char* tmpdir = make_tmpdir();
+    char path[300];
+    snprintf(path, sizeof(path), "%s/raw.dsk", tmpdir);
+
+    /* Build a small raw flat .dsk (8 sectors, no MFM_DISK header). */
+    const uint32_t sz = 8 * 256;
+    uint8_t* original = (uint8_t*)calloc(sz, 1);
+    for (uint32_t i = 0; i < sz; i++) original[i] = (uint8_t)(i & 0xFF);
+    FILE* fp = fopen(path, "wb"); fwrite(original, 1, sz, fp); fclose(fp);
+
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_flash_root(&l, tmpdir);
+
+    /* Mount as drive 0. */
+    push_path(&l, "raw.dsk");
+    l.regs[LOCI_REG_API_A] = 0;
+    loci_write(&l, 0x03AF, LOCI_OP_MOUNT);
+    ASSERT_EQ(l.regs[LOCI_REG_API_A], 0);
+    ASSERT_TRUE(l.dsk_image[0] != NULL);
+    ASSERT_TRUE(!l.dsk_is_mfm[0]);   /* raw, no MFM_DISK magic */
+
+    /* Simulate a FDC write : flip the first byte of sector 0. */
+    l.dsk_image[0][0] = 0xAB;
+    l.dsk_image[0][sz - 1] = 0xCD;
+
+    /* UMOUNT triggers dsk_close → dsk_flush. */
+    l.regs[LOCI_REG_API_A] = 0;
+    loci_write(&l, 0x03AF, LOCI_OP_UMOUNT);
+
+    /* Re-read host file and verify the modifications hit disk. */
+    uint8_t* round = (uint8_t*)malloc(sz);
+    FILE* in = fopen(path, "rb");
+    ASSERT_TRUE(in != NULL);
+    size_t n = fread(round, 1, sz, in);
+    fclose(in);
+    ASSERT_EQ(n, sz);
+    ASSERT_EQ(round[0], 0xAB);
+    ASSERT_EQ(round[sz - 1], 0xCD);
+
+    free(round); free(original);
+    unlink(path); rmdir(tmpdir);
+    loci_cleanup(&l); free(tmpdir);
+}
+
 TEST(test_read_xram_from_file) {
     char* tmpdir = make_tmpdir();
     char path[300];
@@ -2371,6 +2421,7 @@ int main(void) {
     RUN(test_mount_missing_file_enoent);
     RUN(test_mount_bad_drive_einval);
     RUN(test_umount_clears_slot);
+    RUN(test_dsk_raw_writes_persisted_on_umount);
     RUN(test_read_xram_from_file);
     RUN(test_getcwd_returns_path);
     RUN(test_getcwd_255_derives_rom);

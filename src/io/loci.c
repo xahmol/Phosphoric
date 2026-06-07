@@ -96,6 +96,7 @@ static bool tap_open(loci_t* loci, const char* host_path);
 static void tap_close(loci_t* loci);
 static bool dsk_open(loci_t* loci, uint8_t drive, const char* host_path);
 static void dsk_close(loci_t* loci, uint8_t drive);
+static void dsk_flush(loci_t* loci, uint8_t drive);
 
 /* ─── clock helpers ────────────────────────────────────────────── */
 
@@ -200,8 +201,10 @@ void loci_cleanup(loci_t* loci) {
         fclose((FILE*)loci->tap_fp);
         loci->tap_fp = NULL;
     }
-    /* Close mounted disks (Sprint 34ae) + free their image buffers (34aw). */
+    /* Close mounted disks (Sprint 34ae) + free their image buffers (34aw)
+     * + flush flat image back to host (Sprint 34c R3, non-MFM only). */
     for (int i = 0; i < 4; i++) {
+        dsk_flush(loci, (uint8_t)i);
         if (loci->dsk_fp[i]) {
             fclose((FILE*)loci->dsk_fp[i]);
             loci->dsk_fp[i] = NULL;
@@ -211,6 +214,8 @@ void loci_cleanup(loci_t* loci) {
             loci->dsk_image[i] = NULL;
             loci->dsk_image_size[i] = 0;
         }
+        loci->dsk_host_path[i][0] = '\0';
+        loci->dsk_is_mfm[i] = false;
     }
     /* Detach SD image backend (Sprint 34ao). */
     loci_detach_sdimg(loci);
@@ -1863,6 +1868,13 @@ static bool dsk_open(loci_t* loci, uint8_t drive, const char* host_path) {
     /* Sprint 34aw+ : utilise sedoric_load qui gère le format MFM_DISK
      * (header 256 octets + tracks MFM) — convertit en sector array plat
      * que le fdc_t comprend directement. */
+    /* Sprint 34c R3 : remember host path for write-back and detect input
+     * format. */
+    size_t pn = strlen(host_path);
+    if (pn >= sizeof(loci->dsk_host_path[drive])) pn = sizeof(loci->dsk_host_path[drive]) - 1;
+    memcpy(loci->dsk_host_path[drive], host_path, pn);
+    loci->dsk_host_path[drive][pn] = '\0';
+
     sedoric_disk_t* sd = sedoric_load(host_path);
     if (sd) {
         loci->dsk_image[drive]      = sd->data;   /* steal ownership */
@@ -1872,6 +1884,20 @@ static bool dsk_open(loci_t* loci, uint8_t drive, const char* host_path) {
         free(sd);
         loci->dsk_fp[drive] = fopen(host_path, "r+b");
         if (!loci->dsk_fp[drive]) loci->dsk_fp[drive] = fopen(host_path, "rb");
+        /* Detect whether the source file used the MFM_DISK wrapper.
+         * If so, dsk_close cannot safely flush flat sectors back without
+         * re-encoding the MFM tracks — we log it for visibility. */
+        FILE* probe = fopen(host_path, "rb");
+        char hdr[8] = {0};
+        if (probe) {
+            (void)!fread(hdr, 1, 8, probe);
+            fclose(probe);
+        }
+        loci->dsk_is_mfm[drive] = (memcmp(hdr, "MFM_DISK", 8) == 0);
+        if (loci->dsk_is_mfm[drive]) {
+            log_warning("LOCI dsk drive %d: MFM_DISK format — writes are session-only "
+                     "(no MFM re-encoder)", drive);
+        }
     } else {
         /* Fallback raw image. */
         FILE* fp = fopen(host_path, "rb");
@@ -1888,6 +1914,7 @@ static bool dsk_open(loci_t* loci, uint8_t drive, const char* host_path) {
         loci->dsk_fp[drive]         = fp;
         loci->dsk_image[drive]      = buf;
         loci->dsk_image_size[drive] = (uint32_t)sz;
+        loci->dsk_is_mfm[drive]     = false;
     }
     log_info("LOCI dsk_open drive %d: %s (%u bytes, %d tracks, %d sectors)",
              drive, host_path, loci->dsk_image_size[drive],
@@ -1898,8 +1925,37 @@ static bool dsk_open(loci_t* loci, uint8_t drive, const char* host_path) {
     return true;
 }
 
+/* Sprint 34c R3 : flush the in-RAM flat image back to the host file so
+ * SAVEs survive emulator exit. Only safe for non-MFM inputs (MFM_DISK
+ * format would need re-encoding, which we don't implement). */
+static void dsk_flush(loci_t* loci, uint8_t drive) {
+    if (drive >= 4) return;
+    if (loci->dsk_is_mfm[drive]) return;       /* skip — would lose MFM */
+    if (!loci->dsk_image[drive]) return;
+    if (!loci->dsk_host_path[drive][0]) return;
+    FILE* out = fopen(loci->dsk_host_path[drive], "wb");
+    if (!out) {
+        log_warning("LOCI dsk drive %d: cannot open '%s' for write-back",
+                 drive, loci->dsk_host_path[drive]);
+        return;
+    }
+    size_t n = fwrite(loci->dsk_image[drive], 1,
+                      loci->dsk_image_size[drive], out);
+    fclose(out);
+    if (n != loci->dsk_image_size[drive]) {
+        log_warning("LOCI dsk drive %d: short write %zu/%u to '%s'",
+                 drive, n, loci->dsk_image_size[drive],
+                 loci->dsk_host_path[drive]);
+    } else {
+        log_info("LOCI dsk drive %d: %u bytes flushed to '%s'",
+                 drive, loci->dsk_image_size[drive],
+                 loci->dsk_host_path[drive]);
+    }
+}
+
 static void dsk_close(loci_t* loci, uint8_t drive) {
     if (drive >= 4) return;
+    dsk_flush(loci, drive);
     if (loci->dsk_fp[drive]) {
         fclose((FILE*)loci->dsk_fp[drive]);
         loci->dsk_fp[drive] = NULL;
@@ -1909,6 +1965,8 @@ static void dsk_close(loci_t* loci, uint8_t drive) {
         loci->dsk_image[drive] = NULL;
         loci->dsk_image_size[drive] = 0;
     }
+    loci->dsk_host_path[drive][0] = '\0';
+    loci->dsk_is_mfm[drive] = false;
     if (loci->dsk_selected == drive) {
         fdc_set_disk(&loci->dsk_fdc, NULL, 0);
     }

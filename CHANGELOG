@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.63-alpha] - 2026-06-07
+
+### Sprint 34c R3 — Persistance des écritures DSK raw vers le fichier hôte
+
+Issu de la senior review post-34b5
+(`docs/CR/2026-06-07_Senior_LOCI_Pipe_Review_Post_34b5.md`).
+
+#### Fixed
+
+`dsk_open` chargeait l'image en RAM (`loci->dsk_image[drive]`) et y
+routait les écritures, mais `dsk_fp` n'était **jamais re-écrit**.
+Conséquence : en mode `--loci-flash`, un `SAVE` Sedoric sur un disque
+attaché disparaissait silencieusement à la sortie de l'émulateur.
+
+#### Changed
+
+- Nouveau helper `dsk_flush(loci, drive)` (`loci.c:1903-1927`) :
+  flush l'image en RAM vers `dsk_host_path[drive]` via `fopen("wb")`.
+- `dsk_close` et la boucle de cleanup global (`loci_cleanup`)
+  appellent désormais `dsk_flush` avant de libérer le buffer.
+- Nouveau champ `loci_t.dsk_is_mfm[4]` détecté à l'ouverture via la
+  signature `"MFM_DISK"` (8 octets). Quand vrai, `dsk_flush` est
+  **no-op** + log warning à l'ouverture : un MFM_DISK ne peut pas
+  être réécrit à partir des secteurs plats sans réencodage MFM (pas
+  implémenté). Les écritures restent visibles en mémoire (session)
+  comme avant — round-trip in-session OK (validé par E2E 34b2).
+- Nouveau champ `loci_t.dsk_host_path[4][256]` mémorise le chemin
+  hôte utilisé à l'ouverture pour le write-back.
+
+#### Compatibilité
+
+- `--loci-sdimg` reste inchangé : la persistance vers l'image SDIMG
+  passe par `main.c:1269` (sync explicite).
+- `--loci-flash` + `.dsk` raw : SAVE désormais persisté à `UMOUNT` ou
+  à la sortie de l'émulateur.
+- `--loci-flash` + `.dsk` MFM_DISK : persistance volontairement
+  désactivée pour ne pas corrompre le format MFM. À documenter pour
+  les utilisateurs ; sera levé quand un encoder MFM sera disponible.
+
+#### Tests
+
+- Nouveau test unitaire `test_dsk_raw_writes_persisted_on_umount` :
+  mount raw → mutation directe `dsk_image` → UMOUNT → re-read host
+  file → vérifie bytes 0 et 0x7FF.
+- **488 tests unitaires PASS** (487 + 1), 123 tests test-loci.
+- **5/5 scenarios E2E PASS** via `make test-loci-e2e` (pas de
+  régression sur le scénario SAVE/LOAD in-session 34b2).
+
+---
+
 ## [1.16.62-alpha] - 2026-06-07
 
 ### Sprint 34c R1+R2 — Fix `op_readdir` sub-dir + durcissement `resolve_path`

@@ -294,6 +294,12 @@ typedef struct loci_s {
     uint32_t dsk_image_size[4];/* size in bytes per drive */
     uint8_t  dsk_tracks[4];    /* derived from DSK header (default 41) */
     uint8_t  dsk_sectors[4];   /* sectors per track (default 17 Oric) */
+    /* Sprint 34c R3 : track input format + host path so dsk_close can
+     * flush flat sectors back to the host file. MFM_DISK input requires
+     * re-encoding (not implemented), so writes there stay session-only
+     * with a warning logged at mount-time. */
+    bool     dsk_is_mfm[4];          /* true = sedoric_load MFM→flat path */
+    char     dsk_host_path[4][256];  /* host path used for write-back */
     /* Sprint 34aw+ : INTRQ tracking pour matche le format Microdisc
      * (read $0314 = intrq | $7F, comme microdisc_read). */
     uint8_t  dsk_intrq;        /* 0x00 = asserted, 0x80 = clear */

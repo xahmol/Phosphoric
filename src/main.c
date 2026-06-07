@@ -1334,8 +1334,10 @@ static void emulator_run(emulator_t* emu) {
                      * first entry (active was set pre-loop) is informational
                      * — the IDE sees `ready` from main() and then `stopped`. */
                     const char* reason =
+                        emu->control_async_pause_pending ? "user" :
                         emu->debugger.step_mode ? "step" :
                         emu->debugger.watch_triggered ? "watch" : "break";
+                    emu->control_async_pause_pending = false;
                     /* Reset step_mode so the next `continue` doesn't fire
                      * stepping; control_repl will set it again on a `step`
                      * command. */
@@ -1431,6 +1433,13 @@ static void emulator_run(emulator_t* emu) {
         }
 
         total_executed += (uint64_t)frame_cycles;
+
+        /* Sprint 35a freeze — async pause: once per frame, peek at stdin.
+         * If the IDE sent `pause`, hand control back to the REPL right
+         * after this frame ends. Latency = at most one frame (~20 ms). */
+        if (emu->control_mode && control_poll_pause(emu)) {
+            emu->debugger.active = true;
+        }
 
         /* Fast-load phase 1: inject TAP data into RAM as soon as the ROM
          * RAM test is done (~3M cycles). Injecting early ensures the binary

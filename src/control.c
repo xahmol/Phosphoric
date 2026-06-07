@@ -13,6 +13,14 @@
 #include "memory/memory.h"
 #include "debugger.h"
 #include "utils/logging.h"
+#include "io/via6522.h"
+#include "audio/audio.h"
+#include "io/microdisc.h"
+#include "io/acia6551.h"
+#include "io/loci.h"
+#include "storage/disk.h"
+#include <sys/select.h>
+#include <unistd.h>
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -56,6 +64,50 @@ static void emit_evt(const char* fmt, ...) {
     fputc('\n', stdout);
     fflush(stdout);
     va_end(ap);
+}
+
+/* Sprint 35a freeze — non-blocking stdin check called from the main loop
+ * once per frame while the CPU is running. Returns true if the client
+ * sent `pause` and the loop should hand control back to the REPL.
+ * Other commands during running are NOT queued: `quit` exits, anything
+ * else is rejected with ERR busy. Trade-off: simpler semantics for the
+ * IDE, no command races. */
+bool control_poll_pause(emulator_t* emu) {
+    if (!emu->control_mode) return false;
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    struct timeval tv = {0, 0};
+    if (select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) <= 0) return false;
+    if (!FD_ISSET(STDIN_FILENO, &fds)) return false;
+
+    char line[1024];
+    if (!fgets(line, sizeof(line), stdin)) {
+        emu->running = false;
+        return true;
+    }
+    size_t n = strlen(line);
+    while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r'))
+        line[--n] = '\0';
+    if (n == 0) return false;
+
+    /* Strip first token for comparison. */
+    char tok[16] = {0};
+    sscanf(line, "%15s", tok);
+    if (strcmp(tok, "pause") == 0) {
+        reply_ok("pc=%04X cycles=%llu",
+                 emu->cpu.PC, (unsigned long long)emu->cpu.cycles);
+        emu->control_async_pause_pending = true;
+        return true;
+    }
+    if (strcmp(tok, "quit") == 0) {
+        reply_ok("");
+        emu->running = false;
+        return true;
+    }
+    reply_err("busy: emulator running, only `pause`/`quit` allowed "
+              "(received `%s`)", tok);
+    return false;
 }
 
 void control_emit_ready(emulator_t* emu) {
@@ -200,6 +252,111 @@ static void cmd_reset(emulator_t* emu) {
     reply_ok("pc=%04X", emu->cpu.PC);
 }
 
+/* Sprint 35a freeze — protocol version + capability list. Bumped whenever
+ * an existing command or event changes shape (additive `caps=` extensions
+ * do NOT bump the version). */
+#define CONTROL_PROTO_VERSION 1
+#define CONTROL_PROTO_CAPS    "step-out,peek,hello,async-pause"
+
+static void cmd_hello(const char* arg1, const char* arg2) {
+    (void)arg1; (void)arg2;
+    reply_ok("server=phosphoric/%s proto=%d caps=%s",
+             EMU_VERSION, CONTROL_PROTO_VERSION, CONTROL_PROTO_CAPS);
+}
+
+/* Sprint 35a freeze — `peek <subsystem>` exposes the per-device REPL
+ * commands (via/psg/disk/acia/tape/loci) in a single-line key=value
+ * format so the IDE can populate its inspectors without parsing
+ * human-friendly output. Each branch emits one line. */
+static void cmd_peek(emulator_t* emu, const char* sub) {
+    if (!sub) { reply_err("peek: usage `peek <subsystem>`"); return; }
+    if (strcmp(sub, "via") == 0) {
+        via6522_t* v = &emu->via;
+        reply_ok("ora=%02X orb=%02X ddra=%02X ddrb=%02X "
+                 "t1c=%04X t1l=%04X t2c=%04X t2l=%02X "
+                 "acr=%02X pcr=%02X ifr=%02X ier=%02X sr=%02X "
+                 "t1_run=%d t2_run=%d",
+                 v->ora, v->orb, v->ddra, v->ddrb,
+                 v->t1_counter, v->t1_latch, v->t2_counter, v->t2_latch,
+                 v->acr, v->pcr, v->ifr, v->ier, v->sr,
+                 v->t1_running ? 1 : 0, v->t2_running ? 1 : 0);
+    }
+    else if (strcmp(sub, "psg") == 0) {
+        ay3891x_t* p = &emu->psg;
+        fputs("OK", stdout);
+        for (int i = 0; i < 14; i++) fprintf(stdout, " r%d=%02X", i, p->registers[i]);
+        fprintf(stdout, " env_period=%u env_shape=%u env_step=%u env_vol=%u",
+                p->env_period, p->env_shape, p->env_step, p->env_volume);
+        fputc('\n', stdout);
+        fflush(stdout);
+    }
+    else if (strcmp(sub, "disk") == 0 || strcmp(sub, "fdc") == 0) {
+        if (!emu->has_microdisc) { reply_err("disk: microdisc inactive"); return; }
+        microdisc_t* md = &emu->microdisc;
+        fdc_t* f = &md->fdc;
+        reply_ok("ctrl=%02X intrq=%d drq=%d diskrom=%d romdis=%d intena=%d "
+                 "drive=%d side=%d cmd=%02X status=%02X trk=%02X sec=%02X "
+                 "data=%02X dir=%d c_trk=%02X c_sec=%02X cur_off=%04X "
+                 "drives_mounted=%d%d%d%d",
+                 md->status,
+                 md->intrq == 0x00 ? 1 : 0, md->drq == 0x00 ? 1 : 0,
+                 md->diskrom, md->romdis, md->intena, md->drive, md->side,
+                 f->command, f->status, f->track, f->sector, f->data,
+                 f->direction, f->c_track, f->c_sector, f->cur_offset,
+                 md->disk_data[0] != NULL, md->disk_data[1] != NULL,
+                 md->disk_data[2] != NULL, md->disk_data[3] != NULL);
+    }
+    else if (strcmp(sub, "acia") == 0 || strcmp(sub, "serial") == 0) {
+        acia6551_t* a = &emu->acia;
+        reply_ok("tdr=%02X rdr=%02X status=%02X cmd=%02X ctrl=%02X "
+                 "framebits=%u baud=%u v23=%d tx_pending=%d rx_full=%d "
+                 "irq_line=%d dcd=%d dsr=%d cts=%d rx_fifo_count=%d "
+                 "rx_fifo_size=%d",
+                 a->tdr, a->rdr, a->status, a->command, a->control,
+                 a->framebits, a->baud_rate, a->v23_mode ? 1 : 0,
+                 a->tx_pending ? 1 : 0, a->rx_full ? 1 : 0,
+                 a->irq_line ? 1 : 0, a->dcd ? 1 : 0, a->dsr ? 1 : 0,
+                 a->cts ? 1 : 0, a->rx_fifo_count, a->rx_fifo_size);
+    }
+    else if (strcmp(sub, "tape") == 0 || strcmp(sub, "cassette") == 0) {
+        reply_ok("loaded=%d pos=%d len=%d sync_loop=%d cload_active=%d "
+                 "fastload_pending=%d csave_active=%d",
+                 emu->tape_loaded ? 1 : 0, emu->tapeoffs, emu->tapelen,
+                 emu->tape_syncstack >= 0 ? 1 : 0,
+                 emu->tape_readbyte_active ? 1 : 0,
+                 emu->fastload_pending ? 1 : 0,
+                 emu->csave_file != NULL ? 1 : 0);
+    }
+    else if (strcmp(sub, "loci") == 0) {
+        if (!emu->has_loci) { reply_err("loci: inactive"); return; }
+        loci_t* l = &emu->loci;
+        uint16_t err = (uint16_t)l->regs[LOCI_REG_API_ERRNO_LO]
+                     | ((uint16_t)l->regs[LOCI_REG_API_ERRNO_HI] << 8);
+        int fd_n = 0, dir_n = 0, mnt_n = 0;
+        for (int i = 0; i < LOCI_FD_MAX; i++) if (l->fd_kind[i]) fd_n++;
+        for (int i = 0; i < LOCI_DIR_MAX; i++) if (l->dir_kind[i]) dir_n++;
+        for (int i = 0; i < LOCI_MNT_MAX; i++) if (l->mnt_mounted[i]) mnt_n++;
+        uint64_t total = 0;
+        for (int i = 0; i < 256; i++) total += l->op_count[i];
+        reply_ok("enabled=%d active_op=%02X errno=%u busy=%02X "
+                 "ops_total=%llu xstack_used=%u/%d "
+                 "fds_open=%d dirs_open=%d mounts=%d "
+                 "tap_pos=%u tap_size=%u dsk_selected=%d boot_settings=%02X "
+                 "sdimg=%d",
+                 l->enabled ? 1 : 0, l->active_op, err, l->regs[LOCI_REG_BUSY],
+                 (unsigned long long)total,
+                 LOCI_XSTACK_SIZE - l->xstack_ptr, LOCI_XSTACK_SIZE,
+                 fd_n, dir_n, mnt_n,
+                 l->tap_counter, l->tap_size,
+                 l->dsk_selected, l->boot_settings,
+                 l->sdimg ? 1 : 0);
+    }
+    else {
+        reply_err("peek: unknown subsystem `%s` "
+                  "(via|psg|disk|acia|tape|loci)", sub);
+    }
+}
+
 /* ─── main REPL loop ──────────────────────────────────────────── */
 
 void control_repl(emulator_t* emu) {
@@ -218,7 +375,13 @@ void control_repl(emulator_t* emu) {
         char* arg1 = strtok_r(NULL, " \t", &save);
         char* arg2 = strtok_r(NULL, " \t", &save);
 
-        if (strcmp(cmd, "regs") == 0) {
+        if (strcmp(cmd, "hello") == 0) {
+            cmd_hello(arg1, arg2);
+        }
+        else if (strcmp(cmd, "peek") == 0) {
+            cmd_peek(emu, arg1);
+        }
+        else if (strcmp(cmd, "regs") == 0) {
             cmd_regs(emu);
         }
         else if (strcmp(cmd, "set") == 0) {
@@ -265,6 +428,22 @@ void control_repl(emulator_t* emu) {
             }
             emu->debugger.active = false;
             reply_ok("");
+            return;
+        }
+        else if (strcmp(cmd, "step-out") == 0) {
+            /* Sprint 35a freeze-time addition : peek the return address
+             * from the current stack frame (push order : hi first then lo,
+             * so JSR stores PC-1 with hi at $0100+SP+2 and lo at SP+1).
+             * RTS adds +1 to land on the instruction after JSR. */
+            uint16_t sp = (uint16_t)(0x0100 + emu->cpu.SP);
+            uint8_t lo = memory_read(&emu->memory, (uint16_t)(sp + 1));
+            uint8_t hi = memory_read(&emu->memory, (uint16_t)(sp + 2));
+            uint16_t ret = (uint16_t)(((uint16_t)hi << 8) | lo) + 1;
+            emu->debugger.temp_breakpoint = ret;
+            emu->debugger.has_temp_breakpoint = true;
+            emu->debugger.step_mode = false;
+            emu->debugger.active = false;
+            reply_ok("ret=%04X", ret);
             return;
         }
         else if (strcmp(cmd, "continue") == 0) {

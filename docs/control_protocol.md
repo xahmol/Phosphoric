@@ -25,23 +25,41 @@ All values are space-separated `key=value` tokens. Hex numbers accept
 4. When the CPU stops again (breakpoint hit, step terminated, watchpoint),
    emulator emits `EVT stopped …` and waits for the next command.
 
-## Commands implemented in 35a
+## Commands implemented in 35a (frozen)
 
 | CMD | Reply | Notes |
 |-----|-------|-------|
+| `hello [client=… proto=…]` | `OK server=phosphoric/X.Y proto=N caps=…` | recommended at session start |
 | `regs` | `OK A=XX X=XX Y=XX SP=XX P=XX PC=XXXX cycles=N` | snapshot |
 | `set <reg> <val>` | `OK` | reg = A/X/Y/SP/P/PC |
 | `read <addr> <len>` | `OK XX XX XX ...` | bulk hex bytes, len ≤ 4096 |
 | `write <addr> <b0> <b1> ...` | `OK count=N` | at least one byte |
+| `peek <subsystem>` | `OK k=v k=v ...` | sub = `via`/`psg`/`disk`/`acia`/`tape`/`loci` |
 | `break <addr>` | `OK id=N addr=XXXX` | adds PC breakpoint |
 | `unbreak <id>` | `OK` | removes by index |
 | `break-list` | `OK id=N:addr=XXXX [id=… …]` | |
 | `step` | `OK` then `EVT stopped reason=step` | single instruction |
 | `next` | `OK` then `EVT stopped reason=…` | step-over JSR |
+| `step-out` | `OK ret=XXXX` then `EVT stopped reason=break` | reads return addr from stack |
 | `continue` | `OK` then `EVT stopped reason=break` on break hit | |
-| `pause` | `OK pc=… cycles=…` | no-op when already stopped |
+| `pause` | `OK pc=… cycles=…` then `EVT stopped reason=user` | works both when stopped AND while running |
 | `reset` | `OK pc=…` | warm reset |
 | `quit` | `OK` then process exits | |
+
+## Async commands while running
+
+Once a `continue` or `step` has been acknowledged, the CPU is running.
+The stdin parser keeps polling once per frame (~20 ms latency). During
+this window only two commands are accepted :
+
+- `pause` → emu replies `OK pc=… cycles=…` then emits
+  `EVT stopped pc=… cycles=… reason=user`. The REPL is now interactive
+  again.
+- `quit` → emu replies `OK` and exits.
+
+Anything else returns `ERR busy: emulator running, only pause/quit
+allowed (received <cmd>)`. The IDE should not queue : send `pause`,
+wait for `EVT stopped`, then send the synchronous command.
 
 ## Events
 
@@ -50,8 +68,10 @@ All values are space-separated `key=value` tokens. Hex numbers accept
 | `ready` | `pc cycles version` | once at start-up |
 | `stopped` | `pc cycles reason` | every transition CPU → REPL |
 
-Reason values : `break` (PC breakpoint hit), `step` (single step terminated),
-`watch` (watchpoint write hit, future sprint).
+Reason values : `break` (PC breakpoint hit, including step-out / next
+landing on the temporary breakpoint), `step` (single step terminated),
+`user` (async `pause` while running), `watch` (watchpoint write hit,
+sprint 35b).
 
 ## Example session
 

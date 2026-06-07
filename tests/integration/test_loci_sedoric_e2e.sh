@@ -170,19 +170,18 @@ fi
 echo ""
 echo "Scenario 35a — IPC control protocol (OricForge integration)"
 if skip_if_missing "$NATIVE_ROM"; then
-    OUT=$(printf "regs\nread \$F88F 4\nbreak \$F893\ncontinue\nquit\n" \
+    OUT=$(printf "hello\nregs\nread \$F88F 4\npeek via\nbreak \$F893\ncontinue\nquit\n" \
         | timeout 5 "$EMU" -r "$NATIVE_ROM" --control 2>/dev/null)
-    # Expectations: EVT ready, EVT stopped, OK regs, OK 4 bytes, OK id=0,
-    # OK ack continue, EVT stopped reason=break at F893, OK ack quit.
     expected_lines=(
         "EVT ready"
         "EVT stopped pc=F88F cycles=0 reason=break"
+        "OK server=phosphoric/"
+        "proto=1 caps=step-out,peek,hello,async-pause"
         "OK A=00 X=00 Y=00 SP=FD P=24 PC=F88F cycles=0"
         "OK A2 FF 9A 58"
+        "ora=00 orb=00"
         "OK id=0 addr=F893"
-        "OK"
         "EVT stopped pc=F893 cycles=6 reason=break"
-        "OK"
     )
     all_ok=true
     for expected in "${expected_lines[@]}"; do
@@ -192,11 +191,25 @@ if skip_if_missing "$NATIVE_ROM"; then
         fi
     done
     if $all_ok; then
-        echo "  [PASS] 35a IPC protocol handshake + step + break + quit"
+        echo "  [PASS] 35a IPC protocol handshake + peek + step + break + quit"
         pass=$((pass+1))
     else
         echo "  [FAIL] 35a IPC protocol"
         echo "$OUT" | head -20 | sed 's/^/    /'
+        fail=$((fail+1))
+    fi
+
+    # Async pause : send continue, sleep, send pause, then quit.
+    OUT2=$({ printf "continue\n"; sleep 0.3; printf "pause\nregs\nquit\n"; } \
+        | timeout 5 "$EMU" -r "$NATIVE_ROM" --control 2>/dev/null)
+    if grep -qF "reason=user" <<<"$OUT2" && \
+       grep -qF "ERR busy" <<<"$OUT2" 2>/dev/null || \
+       grep -qF "reason=user" <<<"$OUT2"; then
+        echo "  [PASS] 35a async pause-while-running (reason=user)"
+        pass=$((pass+1))
+    else
+        echo "  [FAIL] 35a async pause"
+        echo "$OUT2" | head -10 | sed 's/^/    /'
         fail=$((fail+1))
     fi
 fi

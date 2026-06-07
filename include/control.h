@@ -41,4 +41,12 @@ void control_emit_ready(emulator_t* emu);
  */
 void control_emit_stopped(emulator_t* emu, const char* reason);
 
+/**
+ * @brief Non-blocking stdin poll called once per frame while the CPU is
+ * running. Returns true if the client requested `pause` (or `quit`) and
+ * the main loop should hand control back to the REPL. Other commands
+ * during running are rejected with `ERR busy` (no queueing).
+ */
+bool control_poll_pause(emulator_t* emu);
+
 #endif /* CONTROL_H */

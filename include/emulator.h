@@ -35,7 +35,7 @@
 #include "io/loci.h"
 #include "network/cast_server.h"
 
-#define EMU_VERSION "1.16.72-alpha"
+#define EMU_VERSION "1.16.73-alpha"
 
 /**
  * @brief ORIC machine model
@@ -180,6 +180,11 @@ typedef struct emulator_s {
      * stdin/stdout speak a line-based protocol (CMD/REP/EVT). Logs are
      * routed to stderr at startup so stdout stays clean. */
     bool control_mode;
+    /* Sprint 35a freeze — set by control_poll_pause when async `pause`
+     * acknowledged. The next REPL re-entry will emit `EVT stopped
+     * reason=user` instead of the default `reason=break` and reset this
+     * flag. Lets the IDE see exactly one event per pause cycle. */
+    bool control_async_pause_pending;
 
     /* Screenshot options */
     const char* screenshot_file;

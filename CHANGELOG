@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.73-alpha] - 2026-06-07
+
+### Sprint 35a freeze — Pre-freeze hardening (OricForge review)
+
+Suite à la revue OricForge sur le protocole 35a (mail 2026-06-07).
+4 items « à acter avant freeze » livrés.
+
+#### Added
+
+- **`hello` handshake** : reply
+  `OK server=phosphoric/X.Y proto=N caps=…`. La string `caps=` (CSV)
+  permet à l'IDE de détecter dynamiquement les extensions sans bump
+  de version protocole. Caps actuelles : `step-out,peek,hello,async-pause`.
+
+- **`step-out`** : lit l'adresse de retour depuis la stack
+  (`memory[$0100+SP+1]` lo, `memory[$0100+SP+2]` hi, +1), pose un
+  temp breakpoint dessus, et resume. Reply `OK ret=XXXX`. Indispensable
+  pour sortir d'un JSR profond sans BP manuel.
+
+- **`peek <subsystem>`** : variante machine-friendly des commandes
+  REPL `via`/`psg`/`disk`/`acia`/`tape`/`loci`. Output un seul ligne
+  `OK k=v k=v ...` directement parseable, pour les inspectors IDE.
+
+- **Async pause-while-running** : la boucle principale poll stdin une
+  fois par frame (~20 ms latence max). Pendant que la CPU tourne :
+  - `pause` → reply `OK pc=… cycles=…` puis
+    `EVT stopped reason=user`.
+  - `quit` → reply `OK` puis exit.
+  - Toute autre commande → `ERR busy: emulator running, only pause/quit
+    allowed (received <cmd>)`. Pas de queueing, sémantique simple.
+
+  Nouveau flag `emulator_t.control_async_pause_pending` pour que la
+  REPL re-entry émette `reason=user` (pas le default `reason=break`).
+
+#### Changed
+
+- Inclut `<sys/select.h>` + `<unistd.h>` dans `src/control.c` pour le
+  poll non-bloquant.
+- `docs/control_protocol.md` mis à jour : tableau des commandes,
+  section dédiée async pause-while-running, liste des raisons EVT.
+
+#### Régression E2E
+
+Le scenario `35a IPC protocol` étendu : vérifie maintenant `hello`,
+`peek via`, plus un sous-scenario `async pause-while-running` qui
+envoie `continue`, sleep, `pause`, et vérifie l'EVT `reason=user`.
+**7/7 scenarios E2E PASS** (6 LOCI/Sedoric + IPC sync + IPC async).
+
+#### Réponse OricForge — points reportés
+
+- Point 4 (EVT pour fin naturelle d'un programme) : nous gardons
+  `EVT halt reason=jam` pour CPU.halted et le `EVT exit reason=
+  cycle_limit` (à câbler quand max_cycles atteint). Le cas « back to
+  ROM monitor » est laissé au breakpoint user-side côté IDE — c'est
+  plus prévisible que toute heuristique côté serveur.
+- Points 5 (`disasm`) et 6 (`bread` binaire) : reportés à sprint 35b
+  comme convenu.
+
+#### Tests
+
+- 499 tests unitaires PASS.
+- 7/7 scenarios E2E PASS via `make test-loci-e2e`.
+
+---
+
 ## [1.16.72-alpha] - 2026-06-07
 
 ### Sprint 35a — IPC control mode (OricForge IDE integration)

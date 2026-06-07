@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.56-alpha] - 2026-06-07
+
+### Sprint 34b1 — Sedoric DIR + LOAD"MENU.COM" via LOCI
+
+#### Validation E2E
+
+À partir du menu SEDORIC affiché (34az), une touche pour sortir vers
+BASIC puis :
+
+**`DIR`** → catalogue Sedoric affiché (Drive A V4 Mst, 12 entrées
+visibles, « 1447 free sectors (D/80/17) 94 Files »). Lecture des
+secteurs de directory (track 20) via WD1793 LOCI.
+
+**`LOAD"MENU.COM"`** → MENU.COM (programme machine Sedoric) chargé et
+exécuté → écran « WELCOME TO SEDORIC DOS V4.0 » (menu anglais).
+Lecture multi-secteurs sur tracks distinctes.
+
+Comparaison différentielle native (Microdisc) vs LOCI :
+- **Écran DIR (1120 octets) : 100 % identique**.
+- **Écran post-LOAD MENU.COM : 100 % identique**.
+
+#### Ce que valide ce sprint
+
+Au-delà de la lecture d'un seul secteur (34b0), ce sprint prouve que le
+pipe LOCI WD1793 :
+- répond correctement aux commandes Read Sector successives sur tracks
+  séparées (track 0 menu boot → track 20 directory → tracks données
+  MENU.COM) ;
+- supporte un chargement de programme machine complet avec exécution
+  réussie du code chargé ;
+- reste sémantiquement équivalent au Microdisc natif sur ces 3 phases
+  (boot, DIR, LOAD/exec).
+
+#### Reproduction
+
+Native :
+```bash
+./oric1-emu -r roms/basic11b.rom --disk-rom roms/microdis.rom \
+    -d disks/SEDO40u.DSK --headless -c 65000000 \
+    --type-keys '35000000:\n\p3LOAD"MENU.COM"\n\p3' \
+    --dump-ram-at 64000000:/tmp/native_load.bin
+```
+
+Via LOCI :
+```bash
+./oric1-emu -r roms/loci/locirom --loci --loci-sdimg loci_demo.img \
+    --headless -c 70000000 \
+    --type-keys '15000000:\p3a\p2 \p2 \p2\e\p9\p9\p2\n\p3LOAD"MENU.COM"\n\p9\p3' \
+    --dump-ram-at 69000000:/tmp/loci_load.bin
+```
+
+#### Tests
+
+- 484 tests, tous PASS — sprint de validation E2E pure, aucun changement
+  de code source.
+
+---
+
 ## [1.16.55-alpha] - 2026-06-07
 
 ### Sprint 34b0 — Interaction Sedoric V4.0 via LOCI (DOS VERSION program)

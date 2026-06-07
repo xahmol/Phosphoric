@@ -773,6 +773,13 @@ including host filesystem sharing and conversion tools for legacy BASIC/machine 
 - [x] STAT reporte NOT_READY si pas de tape
 - [x] 10 nouveaux tests test-loci
 
+### Sprint 34b1: Sedoric DIR + LOAD"MENU.COM" via LOCI (v1.16.56-alpha) - DONE
+- [x] BASIC + `DIR` : catalogue Sedoric affiché (12 entrées, 94 fichiers, 1447 secteurs libres)
+- [x] `LOAD"MENU.COM"` : programme machine Sedoric chargé + exécuté → menu anglais affiché
+- [x] Test différentiel native vs LOCI : DIR screen 100 % identique, LOAD screen 100 % identique
+- [x] Validation : pipe LOCI WD1793 lit secteurs sur tracks distinctes (boot t0 → directory t20 → MENU.COM)
+- [x] 484 tests PASS (aucune modif code source)
+
 ### Sprint 34b0: Interaction Sedoric V4.0 via LOCI — DOS VERSION (v1.16.55-alpha) - DONE
 - [x] Frappe `6` (option « Version du DOS ») captée par Sedoric via pipe LOCI
 - [x] Frappe `A` (drive A) déclenche lecture secteur version sur WD1793 LOCI

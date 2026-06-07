@@ -1,12 +1,13 @@
 VERSION_TRACKING - Phosphoric
 =====================================
 
-Current Version: 1.16.60-alpha
+Current Version: 1.16.61-alpha
 Release Date: 2026-06-07
-Status: Alpha (Sprint 34b5 — E2E pipe TAP LOCI : 007 jeu commercial byte-identique au natif)
+Status: Alpha (Docs — senior review post-validation E2E LOCI : aucun P0, 3 P1 listés, sprint 34c planifié)
 
 Version History:
 ----------------
+- 1.16.61-alpha (2026-06-07): Docs — **Senior review post-validation E2E LOCI** (CR 168 lignes, aucun P0, 3 P1 dont 1 bug réel `op_readdir`, backlog R1-R5 pour sprint 34c), 484 tests + 5 E2E PASS
 - 1.16.60-alpha (2026-06-07): Sprint 34b5 — **E2E pipe TAP LOCI** (007 « Dangereusement Vôtre » chargé via TUI LOCI, écran intro 100 % identique au natif), 484 tests + 5 E2E PASS
 - 1.16.59-alpha (2026-06-07): Sprint 34b4 — **RUN after LOAD via LOCI** (programme rechargé exécute « HELLO LOCI », écran 100 % identique au natif), 484 tests + 4 E2E PASS
 - 1.16.58-alpha (2026-06-07): Sprint 34b3 — **Régression E2E LOCI/Sedoric** (script bash + cible `make test-loci-e2e`, rejoue 34b0/b1/b2 avec diff bytes), 484 tests PASS

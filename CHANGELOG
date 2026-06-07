@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.61-alpha] - 2026-06-07
+
+### Docs — Senior review post-validation E2E LOCI (sprints 34b0→34b5)
+
+#### Added
+
+- `docs/CR/2026-06-07_Senior_LOCI_Pipe_Review_Post_34b5.md` (168 lignes)
+  — review approfondie du pipe LOCI/Sedoric après validation E2E
+  complète : forces, risques résiduels (P1/P2), dette technique,
+  couverture tests, recommandations actionnables (R1-R5).
+
+#### Bilan
+
+- **Aucun P0 détecté.** Le pipe est fonctionnellement solide.
+- **3 risques P1 identifiés** :
+  - Bug réel `op_readdir` POSIX (`loci.c:1549-1551`) : `stat()`
+    reconstruit le path avec `flash_root` au lieu du DIR* ouvert
+    → entries dans un sous-rep mal classés. Non observé en E2E
+    (Sedoric reste root), apparaîtra dès qu'une UI parcourt un
+    sous-rep.
+  - `resolve_path` `strstr(p, "..")` trop laxiste (`loci.c:713`) :
+    rejette `my..file.tap` légitime, et ne tokenise pas.
+  - Écritures DSK non-persistées en mode `--loci-flash`
+    (`loci.c:1875-1889`) : SAVE Sedoric perdu à la fermeture.
+    Mode `--loci-sdimg` OK (sync à `main.c:1269`).
+- **Sprint 34c planifié** dans ROADMAP avec R1-R5 priorisés par
+  ratio valeur/effort.
+
+#### Tests
+
+- 484 tests unitaires PASS (suite standard inchangée).
+- 5/5 scenarios E2E PASS (suite étendue inchangée).
+
+---
+
 ## [1.16.60-alpha] - 2026-06-07
 
 ### Sprint 34b5 — E2E pipe TAP LOCI : 007 « Dangereusement Vôtre »

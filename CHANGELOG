@@ -32,10 +32,6 @@ client app's presence check failed under `--loci`/`--loci-flash`.
 ### Sprint 36c — Fix rechain parasite sur CLOAD code machine (autorun ROM 1.0)
 
 Diagnostic parti d'un rapport forum : `asteroids.tap` (code machine
-
-### Sprint 36c — Fix rechain parasite sur CLOAD code machine (autorun ROM 1.0)
-
-Diagnostic parti d'un rapport forum : `asteroids.tap` (code machine
 ORIC-1, autorun `$C7`) chargeait sous JOric/oric.games mais ne
 démarrait pas. Reproduit dans Phosphoric via le chemin ROM réel
 (auto-CLOAD sans `-f`) : autorun OK… mais crash immédiat vers READY.

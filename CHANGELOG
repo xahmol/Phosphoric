@@ -5,7 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.80-alpha] - 2026-06-11
+
+### Sprint 36d — LOCI identity marker register $0319
+
+Found while building a Phosphoric-based automated test harness for
+locifilemanager-v2 (LOCI Oric Atmos client app): `loci_present()` in
+client software detects LOCI hardware via `peek($0319) == 'L'`, a
+convention from real loci-firmware (`mia.c`: `IOREGS(0x0319) = 'L'` set
+once at init, writes thereafter silently ignored — "Disabled write for
+LOCI identity marker"). $0319 falls in the $0310-$031B I/O range LOCI's
+RP2040 claims, but Phosphoric's LOCI DSK emulation only covered
+$0310-$0314 + $0318, so reads of $0319 fell through to VIA and any LOCI
+client app's presence check failed under `--loci`/`--loci-flash`.
+
+#### Added
+
+- `LOCI_DSK_IO_ID` ($0319): read returns `'L'` (0x4C) whenever LOCI is
+  enabled, `0xFF` otherwise; writes are a no-op, matching real hardware.
+- 2 new unit tests in `tests/unit/test_loci.c`
+  (`test_dsk_id_register_returns_loci_marker`,
+  `test_dsk_id_register_ff_when_disabled`).
+
 ## [1.16.79-alpha] - 2026-06-11
+
+### Sprint 36c — Fix rechain parasite sur CLOAD code machine (autorun ROM 1.0)
+
+Diagnostic parti d'un rapport forum : `asteroids.tap` (code machine
 
 ### Sprint 36c — Fix rechain parasite sur CLOAD code machine (autorun ROM 1.0)
 

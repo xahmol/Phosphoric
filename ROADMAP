@@ -795,6 +795,12 @@ Référence : `docs/control_protocol.md`
 - [ ] `bread <addr> <len>` (framing binaire) — reporté à 35c selon scope
 - [ ] Client de référence Python (livré par OricForge en parallèle)
 
+### Sprint 36d: LOCI identity marker register $0319 (v1.16.80-alpha) - DONE
+- [x] Found while building Phosphoric-based test harness for locifilemanager-v2 (LOCI Oric Atmos client)
+- [x] Root cause : client `loci_present()` checks `peek($0319) == 'L'`, a real-hardware convention (`loci-firmware/mia.c`: `IOREGS(0x0319)='L'` set once at init, writes disabled) — Phosphoric's LOCI DSK range only covered $0310-$0314 + $0318
+- [x] New `LOCI_DSK_IO_ID` ($0319) : returns `'L'` (0x4C) when LOCI enabled, `0xFF` otherwise ; writes are no-op
+- [x] 2 new unit tests (`test_dsk_id_register_returns_loci_marker`, `test_dsk_id_register_ff_when_disabled`)
+
 ### Sprint 36c: Fix rechain parasite CLOAD code machine (v1.16.79-alpha) - DONE
 - [x] Diagnostic forum « asteroids.tap no autorun » : reproduit via chemin ROM réel (auto-CLOAD sans `-f`)
 - [x] Root cause : garde rechain lisait le type en `$66` ; ROM 1.0 stocke l'en-tête inversé → type en `$64` (Atmos : `$02AE`)

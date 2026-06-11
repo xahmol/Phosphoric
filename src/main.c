@@ -519,7 +519,7 @@ static uint8_t io_read_callback(uint16_t address, void* userdata) {
     if (emu->has_loci && loci_addr_in_tap(address)) {
         return loci_tap_read(&emu->loci, address);
     }
-    /* LOCI DSK $0310-$0314 + $0318 (Sprint 34ae). Only when no real
+    /* LOCI DSK $0310-$0314 + $0318-$0319 (Sprint 34ae). Only when no real
      * Microdisc is present — otherwise the existing microdisc handler
      * owns the range. */
     if (emu->has_loci && !emu->has_microdisc && loci_addr_in_dsk(address)) {
@@ -648,7 +648,7 @@ static void io_write_callback(uint16_t address, uint8_t value, void* userdata) {
         loci_tap_write(&emu->loci, address, value);
         return;
     }
-    /* LOCI DSK $0310-$0314 + $0318 (Sprint 34ae). */
+    /* LOCI DSK $0310-$0314 + $0318-$0319 (Sprint 34ae). */
     if (emu->has_loci && !emu->has_microdisc && loci_addr_in_dsk(address)) {
         loci_dsk_write(&emu->loci, address, value);
         return;

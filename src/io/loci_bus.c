@@ -303,6 +303,7 @@ uint8_t loci_dsk_read(loci_t* loci, uint16_t address) {
         case LOCI_DSK_IO_DATA:  return fdc_read(&loci->dsk_fdc, 3);
         case LOCI_DSK_IO_CTRL:  return loci->dsk_intrq | 0x7F;
         case LOCI_DSK_IO_DRQ:   return loci->dsk_drq | 0x7F;
+        case LOCI_DSK_IO_ID:    return 'L';
     }
     return 0xFF;
 }

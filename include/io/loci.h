@@ -142,6 +142,7 @@ typedef enum {
 #define LOCI_DSK_IO_DATA    0x0313
 #define LOCI_DSK_IO_CTRL    0x0314
 #define LOCI_DSK_IO_DRQ     0x0318
+#define LOCI_DSK_IO_ID      0x0319   /* LOCI identity marker, read-only 'L' */
 
 /* WD1793 status bits we report (subset). */
 #define LOCI_DSK_STAT_NOT_READY  0x80
@@ -463,10 +464,10 @@ static inline bool loci_addr_in_tap(uint16_t address) {
     return address >= LOCI_TAP_IO_CMD && address <= LOCI_TAP_IO_DATA;
 }
 
-/* DSK WD179x register range $0310-$0314 + $0318 (Sprint 34ae). */
+/* DSK WD179x register range $0310-$0314 + $0318-$0319 (Sprint 34ae). */
 static inline bool loci_addr_in_dsk(uint16_t address) {
     return (address >= LOCI_DSK_IO_CMD && address <= LOCI_DSK_IO_CTRL) ||
-           (address == LOCI_DSK_IO_DRQ);
+           (address == LOCI_DSK_IO_DRQ) || (address == LOCI_DSK_IO_ID);
 }
 
 /* TAP register access (used by the main I/O router). */

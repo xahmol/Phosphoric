@@ -1662,6 +1662,24 @@ TEST(test_dsk_drq_register) {
     ASSERT_EQ(loci_dsk_read(&l, 0x0318), 0xFF);
 }
 
+TEST(test_dsk_id_register_returns_loci_marker) {
+    /* Real loci-firmware sets IOREGS(0x0319)='L' as a permanent identity
+     * marker (mia.c:1399) and disables writes to it (mia.c:819-822).
+     * Client software (locifilemanager loci_present()) detects LOCI by
+     * checking peek(0x0319) == 'L'. */
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    ASSERT_EQ(loci_dsk_read(&l, 0x0319), 'L');
+    loci_dsk_write(&l, 0x0319, 0x00);
+    ASSERT_EQ(loci_dsk_read(&l, 0x0319), 'L');
+}
+
+TEST(test_dsk_id_register_ff_when_disabled) {
+    loci_t l; loci_init(&l);
+    l.enabled = false;
+    ASSERT_EQ(loci_dsk_read(&l, 0x0319), 0xFF);
+}
+
 TEST(test_dsk_four_independent_drives) {
     char* tmpdir = make_tmpdir();
     char* a = make_blob(tmpdir, "a.dsk", 16);
@@ -2650,6 +2668,8 @@ int main(void) {
     RUN(test_dsk_ctrl_select_drive_via_bits_5_6);
     RUN(test_dsk_track_sect_data_passthrough);
     RUN(test_dsk_drq_register);
+    RUN(test_dsk_id_register_returns_loci_marker);
+    RUN(test_dsk_id_register_ff_when_disabled);
     RUN(test_dsk_four_independent_drives);
     RUN(test_dsk_wd1793_restore_command_clears_busy);
     RUN(test_dsk_wd1793_ctrl_change_drive_repoints_fdc);

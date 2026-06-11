@@ -102,7 +102,7 @@ typedef enum {
 #define LOCI_EBADF   16
 #define LOCI_ENOEXEC 17
 
-#define LOCI_XSTACK_SIZE 256
+#define LOCI_XSTACK_SIZE 512   /* matches firmware XSTACK_SIZE 0x200 (mem.h) */
 
 /* open() flags — matching firmware constants (std.c). */
 #define LOCI_O_RDWR    0x03

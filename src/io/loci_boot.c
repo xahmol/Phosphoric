@@ -73,9 +73,10 @@ void op_mia_boot(loci_t* loci) {
 /* ─── Sprint 34au : tuning / config stubs ──────────────────────── */
 
 void op_cpu_phi2(loci_t* loci) {
-    uint8_t requested = loci->regs[LOCI_REG_API_A];
-    log_debug("LOCI op_cpu_phi2: requested divisor=%u, returning 1 MHz", requested);
-    api_return_axsreg(loci, 1000000u);
+    /* Firmware returns the PHI2 clock in kHz in AX (cpu.c cpu_api_phi2),
+     * not Hz — 1 MHz Oric bus = 1000. */
+    log_debug("LOCI op_cpu_phi2: returning 1000 kHz");
+    api_return_ax(loci, 1000);
 }
 
 void op_oem_codepage(loci_t* loci) {

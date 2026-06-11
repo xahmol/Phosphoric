@@ -795,6 +795,14 @@ Référence : `docs/control_protocol.md`
 - [ ] `bread <addr> <len>` (framing binaire) — reporté à 35c selon scope
 - [ ] Client de référence Python (livré par OricForge en parallèle)
 
+### Sprint 36e: Conformité API LOCI vs firmware officiel (v1.16.81-alpha) - DONE
+- [x] Audit complet de l'émulation LOCI contre les sources `sodiumlb/loci-firmware` (registres I/O, conventions API, 35 opcodes)
+- [x] Fix `lseek` op $1A : whence int8 au sommet de la xstack + offset int32 short-stack 0-4 octets signe-étendu (`api_pop_int32_end`) ; mapping firmware 0=SEEK_CUR / 1=SEEK_END / 2=SEEK_SET (les deux étaient inversés) ; helper partagé `pop_lseek_args()` POSIX+SDIMG
+- [x] Fix `phi2` op $02 : retourne 1000 kHz dans AX (convention `cpu_api_phi2`) au lieu de 1 000 000 Hz en AXSREG (débordait AX)
+- [x] Fix `LOCI_XSTACK_SIZE` 256 → 512 (= firmware `XSTACK_SIZE 0x200`, `mem.h`) ; `read_xstack` accepte désormais count ≤ 512
+- [x] 4 nouveaux tests (whence CUR/END + short-stack 0 et 1 octet signe-étendu, capacité xstack 512, read_xstack > 256) ; tests lseek/phi2 existants réalignés sur la convention firmware
+- [ ] Backlog 36f (divergences moyennes documentées dans l'audit) : console UART $03A0-$03A3 (bit7 TX-ready minimal), protocole TAP bas niveau $0315/$0317 (PLAY/REC/READ_BIT/FFW), ACIA LOCI $0380-$0383, op $A6 `adj_scan`, $031A-$031B, bits bas $0314/$0318
+
 ### Sprint 36d: LOCI identity marker register $0319 (v1.16.80-alpha) - DONE
 - [x] Found while building Phosphoric-based test harness for locifilemanager-v2 (LOCI Oric Atmos client)
 - [x] Root cause : client `loci_present()` checks `peek($0319) == 'L'`, a real-hardware convention (`loci-firmware/mia.c`: `IOREGS(0x0319)='L'` set once at init, writes disabled) — Phosphoric's LOCI DSK range only covered $0310-$0314 + $0318

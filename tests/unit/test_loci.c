@@ -410,13 +410,15 @@ TEST(test_lseek_set_then_read) {
     int fd = l.regs[LOCI_REG_API_A];
     ASSERT_TRUE(fd >= LOCI_FD_OFFSET);
 
-    /* Push int32 offset=5, then uint8 whence=0 (SEEK_SET). */
+    /* Firmware order (std.c, Sprint 36e): push int32 offset=5 MSB-first
+     * (little-endian in xstack memory), then uint8 whence=2 (SEEK_SET)
+     * last so it sits on top of the stack. */
     int32_t offset = 5;
-    loci_write(&l, 0x03AC, 0);   /* whence */
     loci_write(&l, 0x03AC, (uint8_t)((offset >> 24) & 0xFF));
     loci_write(&l, 0x03AC, (uint8_t)((offset >> 16) & 0xFF));
     loci_write(&l, 0x03AC, (uint8_t)((offset >>  8) & 0xFF));
     loci_write(&l, 0x03AC, (uint8_t)(offset & 0xFF));
+    loci_write(&l, 0x03AC, 2);   /* whence on top: 2 = SEEK_SET */
 
     l.regs[LOCI_REG_API_A] = (uint8_t)fd;
     loci_write(&l, 0x03AF, LOCI_OP_LSEEK);
@@ -440,6 +442,129 @@ TEST(test_lseek_set_then_read) {
     loci_write(&l, 0x03AF, LOCI_OP_CLOSE);
     unlink(path); rmdir(tmpdir);
     loci_cleanup(&l); free(tmpdir);
+}
+
+/* Sprint 36e — firmware-conformance lseek/xstack tests. */
+
+/* Helper: open an existing file, return its fd (or -1). */
+static int open_existing(loci_t* l, const char* name) {
+    push_path(l, name);
+    l->regs[LOCI_REG_API_A] = 0;
+    loci_write(l, 0x03AF, LOCI_OP_OPEN);
+    int fd = l->regs[LOCI_REG_API_A];
+    return (fd >= LOCI_FD_OFFSET) ? fd : -1;
+}
+
+static uint32_t read_axsreg(loci_t* l) {
+    return l->regs[LOCI_REG_API_A] |
+           ((uint32_t)l->regs[LOCI_REG_API_X]       << 8) |
+           ((uint32_t)l->regs[LOCI_REG_API_SREG]    << 16) |
+           ((uint32_t)l->regs[LOCI_REG_API_SREG_HI] << 24);
+}
+
+TEST(test_lseek_whence_cur_and_end_firmware_mapping) {
+    char* tmpdir = make_tmpdir();
+    char path[300];
+    snprintf(path, sizeof(path), "%s/w.bin", tmpdir);
+    FILE* fp = fopen(path, "wb");
+    fwrite("0123456789", 1, 10, fp);
+    fclose(fp);
+
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_flash_root(&l, tmpdir);
+    int fd = open_existing(&l, "w.bin");
+    ASSERT_TRUE(fd > 0);
+
+    /* whence=1 (SEEK_END), offset short-stacked to ZERO bytes:
+     * only the whence byte is pushed → position = file size = 10. */
+    loci_write(&l, 0x03AC, 1);
+    l.regs[LOCI_REG_API_A] = (uint8_t)fd;
+    loci_write(&l, 0x03AF, LOCI_OP_LSEEK);
+    ASSERT_EQ(read_axsreg(&l), 10);
+
+    /* whence=0 (SEEK_CUR), offset=-4 short-stacked on ONE byte (0xFC,
+     * sign-extended like api_pop_int32_end) → 10 - 4 = 6. */
+    loci_write(&l, 0x03AC, 0xFC);
+    loci_write(&l, 0x03AC, 0);   /* whence on top */
+    l.regs[LOCI_REG_API_A] = (uint8_t)fd;
+    loci_write(&l, 0x03AF, LOCI_OP_LSEEK);
+    ASSERT_EQ(read_axsreg(&l), 6);
+
+    l.regs[LOCI_REG_API_A] = (uint8_t)fd;
+    loci_write(&l, 0x03AF, LOCI_OP_CLOSE);
+    unlink(path); rmdir(tmpdir); loci_cleanup(&l); free(tmpdir);
+}
+
+TEST(test_lseek_short_stack_one_byte_offset) {
+    char* tmpdir = make_tmpdir();
+    char path[300];
+    snprintf(path, sizeof(path), "%s/s.bin", tmpdir);
+    FILE* fp = fopen(path, "wb");
+    fwrite("abcdefgh", 1, 8, fp);
+    fclose(fp);
+
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_flash_root(&l, tmpdir);
+    int fd = open_existing(&l, "s.bin");
+    ASSERT_TRUE(fd > 0);
+
+    /* offset=3 pushed as a single byte + whence=2 (SEEK_SET) on top. */
+    loci_write(&l, 0x03AC, 3);
+    loci_write(&l, 0x03AC, 2);
+    l.regs[LOCI_REG_API_A] = (uint8_t)fd;
+    loci_write(&l, 0x03AF, LOCI_OP_LSEEK);
+    ASSERT_EQ(read_axsreg(&l), 3);
+
+    l.regs[LOCI_REG_API_A] = (uint8_t)fd;
+    loci_write(&l, 0x03AF, LOCI_OP_CLOSE);
+    unlink(path); rmdir(tmpdir); loci_cleanup(&l); free(tmpdir);
+}
+
+TEST(test_xstack_512_bytes_capacity) {
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    ASSERT_EQ(LOCI_XSTACK_SIZE, 512);
+    /* Push 400 bytes — would silently drop past 256 before Sprint 36e. */
+    for (int i = 0; i < 400; i++) {
+        loci_write(&l, 0x03AC, (uint8_t)(i & 0xFF));
+    }
+    ASSERT_EQ(l.xstack_ptr, LOCI_XSTACK_SIZE - 400);
+    /* Pop everything back: last pushed (399) comes out first. */
+    for (int i = 399; i >= 0; i--) {
+        ASSERT_EQ(loci_read(&l, 0x03AC), (uint8_t)(i & 0xFF));
+    }
+    ASSERT_EQ(l.xstack_ptr, LOCI_XSTACK_SIZE);
+    loci_cleanup(&l);
+}
+
+TEST(test_read_xstack_count_above_256) {
+    char* tmpdir = make_tmpdir();
+    char path[300];
+    snprintf(path, sizeof(path), "%s/big.bin", tmpdir);
+    FILE* fp = fopen(path, "wb");
+    for (int i = 0; i < 300; i++) fputc(i & 0xFF, fp);
+    fclose(fp);
+
+    loci_t l; loci_init(&l);
+    l.enabled = true;
+    loci_set_flash_root(&l, tmpdir);
+    int fd = open_existing(&l, "big.bin");
+    ASSERT_TRUE(fd > 0);
+
+    push_u16(&l, 300);
+    l.regs[LOCI_REG_API_A] = (uint8_t)fd;
+    loci_write(&l, 0x03AF, LOCI_OP_READ_XSTACK);
+    uint16_t got = l.regs[LOCI_REG_API_A] |
+                   ((uint16_t)l.regs[LOCI_REG_API_X] << 8);
+    ASSERT_EQ(got, 300);
+    ASSERT_EQ(loci_read(&l, 0x03AC), 0);   /* first byte of the file */
+    ASSERT_EQ(loci_read(&l, 0x03AC), 1);
+
+    l.regs[LOCI_REG_API_A] = (uint8_t)fd;
+    loci_write(&l, 0x03AF, LOCI_OP_CLOSE);
+    unlink(path); rmdir(tmpdir); loci_cleanup(&l); free(tmpdir);
 }
 
 TEST(test_unlink_removes_file) {
@@ -940,12 +1065,12 @@ TEST(test_op_write_xstack_bad_fd_ebadf) {
 TEST(test_op_lseek_bad_fd_ebadf) {
     loci_t l; loci_init(&l);
     l.enabled = true;
-    /* Push int32 offset (4 bytes) + uint8 whence (=0 SEEK_SET). */
-    loci_write(&l, 0x03AC, 0);   /* whence */
+    /* Push int32 offset (4 bytes) then uint8 whence (=2 SEEK_SET) on top. */
     loci_write(&l, 0x03AC, 0);   /* offset[3] hi */
     loci_write(&l, 0x03AC, 0);
     loci_write(&l, 0x03AC, 0);
     loci_write(&l, 0x03AC, 0);   /* offset[0] lo */
+    loci_write(&l, 0x03AC, 2);   /* whence on top */
     l.regs[LOCI_REG_API_A] = 99;
     loci_write(&l, 0x03AF, LOCI_OP_LSEEK);
     ASSERT_EQ(errno_lo(&l), LOCI_EBADF);
@@ -966,12 +1091,12 @@ TEST(test_op_lseek_bad_whence_einval) {
     int fd = l.regs[LOCI_REG_API_A];
     ASSERT_TRUE(fd >= LOCI_FD_OFFSET);
 
-    /* whence = 5 → invalid (only 0/1/2 accepted). */
-    loci_write(&l, 0x03AC, 5);
+    /* whence = 5 → invalid (only 0/1/2 accepted). Pushed last = on top. */
     loci_write(&l, 0x03AC, 0);
     loci_write(&l, 0x03AC, 0);
     loci_write(&l, 0x03AC, 0);
     loci_write(&l, 0x03AC, 0);
+    loci_write(&l, 0x03AC, 5);   /* whence on top */
     l.regs[LOCI_REG_API_A] = (uint8_t)fd;
     loci_write(&l, 0x03AF, LOCI_OP_LSEEK);
     ASSERT_EQ(errno_lo(&l), LOCI_EINVAL);
@@ -2302,16 +2427,14 @@ TEST(test_mou_report_buttons_independent_of_deltas) {
 
 TEST(test_op_cpu_phi2_returns_1mhz) {
     loci_t l; loci_init(&l); l.enabled = true;
-    l.regs[LOCI_REG_API_A] = 0x10;  /* divisor — ignored */
     loci_write(&l, 0x03AF, LOCI_OP_CPU_PHI2);
     uint16_t e = l.regs[LOCI_REG_API_ERRNO_LO] |
                  ((uint16_t)l.regs[LOCI_REG_API_ERRNO_HI] << 8);
     ASSERT_EQ(e, 0);
-    /* AXSREG = 1 000 000 = $000F4240 → A=$40, X=$42, SREG=$0F, SREG_HI=$00 */
-    ASSERT_EQ(l.regs[LOCI_REG_API_A], 0x40);
-    ASSERT_EQ(l.regs[LOCI_REG_API_X], 0x42);
-    ASSERT_EQ(l.regs[LOCI_REG_API_SREG], 0x0F);
-    ASSERT_EQ(l.regs[LOCI_REG_API_SREG_HI], 0x00);
+    /* Firmware convention (cpu.c cpu_api_phi2): AX = PHI2 in kHz.
+     * 1 MHz = 1000 = $03E8 → A=$E8, X=$03 (Sprint 36e fix). */
+    ASSERT_EQ(l.regs[LOCI_REG_API_A], 0xE8);
+    ASSERT_EQ(l.regs[LOCI_REG_API_X], 0x03);
     ASSERT_EQ(l.op_count[LOCI_OP_CPU_PHI2], 1);
 }
 
@@ -2599,6 +2722,10 @@ int main(void) {
     RUN(test_open_path_traversal_rejected);
     RUN(test_write_read_roundtrip);
     RUN(test_lseek_set_then_read);
+    RUN(test_lseek_whence_cur_and_end_firmware_mapping);
+    RUN(test_lseek_short_stack_one_byte_offset);
+    RUN(test_xstack_512_bytes_capacity);
+    RUN(test_read_xstack_count_above_256);
     RUN(test_unlink_removes_file);
     RUN(test_close_bad_fd_returns_ebadf);
     RUN(test_fd_exhaustion_emfile);

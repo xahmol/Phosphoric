@@ -240,21 +240,47 @@ static void op_read_xstack_sdimg(loci_t* loci) {
     api_return_ax(loci, (uint16_t)br);
 }
 
+/* Firmware lseek convention (loci-firmware std.c:377, Sprint 36e):
+ * the int8 whence sits on TOP of the xstack (pushed last), then the
+ * int32 offset below it as a "short stack" — 0 to 4 bytes, little-endian
+ * in xstack memory, sign-extended like api_pop_int32_end().
+ * whence values: 0 = SEEK_CUR, 1 = SEEK_END, 2 = SEEK_SET. */
+static bool pop_lseek_args(loci_t* loci, int32_t* offset, uint8_t* whence) {
+    if (loci->xstack_ptr >= LOCI_XSTACK_SIZE) return false;     /* no whence */
+    *whence = loci->xstack[loci->xstack_ptr++];
+    uint16_t avail = (uint16_t)(LOCI_XSTACK_SIZE - loci->xstack_ptr);
+    if (avail > 4) return false;
+    int32_t v = 0;
+    if (avail > 0) {
+        memcpy((uint8_t*)&v + (4 - avail), &loci->xstack[loci->xstack_ptr], avail);
+        v >>= 8 * (4 - avail);                  /* arithmetic: sign-extend */
+        loci->xstack_ptr += avail;
+    }
+    *offset = v;
+    xstack_zero(loci);
+    return true;
+}
+
 static void op_lseek_sdimg(loci_t* loci) {
     int fd = loci->regs[LOCI_REG_API_A];
-    if (loci->xstack_ptr + 5 > LOCI_XSTACK_SIZE) {
+    int32_t offset;
+    uint8_t whence;
+    if (!pop_lseek_args(loci, &offset, &whence)) {
         api_return_errno(loci, LOCI_EINVAL); return;
     }
-    int32_t offset;
-    memcpy(&offset, &loci->xstack[loci->xstack_ptr], 4);
-    loci->xstack_ptr += 4;
-    uint8_t whence = loci->xstack[loci->xstack_ptr++];
-    xstack_zero(loci);
     int slot = fd - LOCI_FD_OFFSET;
     if (slot < 0 || slot >= LOCI_FD_MAX || !loci->fds[slot]) {
         api_return_errno(loci, LOCI_EBADF); return;
     }
-    int32_t pos = loci_sdimg_lseek((loci_sdimg_t*)loci->sdimg, slot, offset, whence);
+    /* loci_sdimg_lseek() expects POSIX-style 0=SET/1=CUR/2=END. */
+    uint8_t sw;
+    switch (whence) {
+        case 0: sw = 1; break;
+        case 1: sw = 2; break;
+        case 2: sw = 0; break;
+        default: api_return_errno(loci, LOCI_EINVAL); return;
+    }
+    int32_t pos = loci_sdimg_lseek((loci_sdimg_t*)loci->sdimg, slot, offset, sw);
     if (pos < 0) { api_return_errno(loci, sdimg_errno_to_loci(pos)); return; }
     api_return_axsreg(loci, (uint32_t)pos);
 }
@@ -455,15 +481,12 @@ void op_write_xstack(loci_t* loci) {
 void op_lseek(loci_t* loci) {
     if (loci->sdimg) { op_lseek_sdimg(loci); return; }
     int fd = loci->regs[LOCI_REG_API_A];
-    if (loci->xstack_ptr + 5 > LOCI_XSTACK_SIZE) {
+    int32_t offset;
+    uint8_t whence;
+    if (!pop_lseek_args(loci, &offset, &whence)) {
         api_return_errno(loci, LOCI_EINVAL);
         return;
     }
-    int32_t offset;
-    memcpy(&offset, &loci->xstack[loci->xstack_ptr], 4);
-    loci->xstack_ptr += 4;
-    uint8_t whence = loci->xstack[loci->xstack_ptr++];
-    xstack_zero(loci);
 
     FILE* fp = fd_to_file(loci, fd);
     if (!fp) {
@@ -472,9 +495,9 @@ void op_lseek(loci_t* loci) {
     }
     int hw;
     switch (whence) {
-        case 0: hw = SEEK_SET; break;
-        case 1: hw = SEEK_CUR; break;
-        case 2: hw = SEEK_END; break;
+        case 0: hw = SEEK_CUR; break;
+        case 1: hw = SEEK_END; break;
+        case 2: hw = SEEK_SET; break;
         default:
             api_return_errno(loci, LOCI_EINVAL);
             return;

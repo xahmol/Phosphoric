@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.81-alpha] - 2026-06-12
+
+### Sprint 36e — Conformité API LOCI vs firmware officiel
+
+Audit complet de l'émulation LOCI contre les sources du firmware
+officiel (`sodiumlb/loci-firmware`), déclenché par la collaboration
+PR #4 (xahmol). Trois bugs de conformité confirmés sur pièces et
+corrigés — la suite de tests ne pouvait pas les voir car elle validait
+notre propre convention, pas celle du firmware.
+
+#### Fixed
+
+- **`lseek` (op $1A) doublement non conforme** (`src/io/loci_fs.c`) :
+  le firmware dépile le `whence` (int8) au sommet de la xstack puis
+  l'offset int32 en « short-stack » (0-4 octets, little-endian,
+  extension de signe — `api_pop_int32_end`, `std.c:377`) ; nous
+  lisions l'inverse (offset 4 octets fixes au sommet, puis whence).
+  Le mapping whence était aussi inversé : firmware `0=SEEK_CUR,
+  1=SEEK_END, 2=SEEK_SET` ; nous appliquions `0=SET, 1=CUR, 2=END`.
+  Nouveau helper partagé `pop_lseek_args()` (POSIX + SDIMG, avec
+  traduction vers la convention 0=SET de `loci_sdimg_lseek`).
+- **`phi2` (op $02) retournait des Hz au lieu de kHz**
+  (`src/io/loci_boot.c`) : le firmware renvoie les kHz dans AX 16 bits
+  (`cpu.c` `cpu_api_phi2` → 1000) ; nous renvoyions 1 000 000 en
+  AXSREG, qui déborde AX (un client cc65 lisait 16960).
+- **xstack de 256 octets au lieu de 512** (`include/io/loci.h`) :
+  le firmware définit `XSTACK_SIZE 0x200` (`mem.h`) ; un push au-delà
+  de 256 était silencieusement perdu et `read_xstack` plafonnait à
+  256 au lieu de 512.
+
+#### Added
+
+- 4 nouveaux tests unitaires dans `tests/unit/test_loci.c` :
+  `test_lseek_whence_cur_and_end_firmware_mapping` (SEEK_END en
+  short-stack zéro octet + SEEK_CUR offset négatif sur 1 octet
+  signe-étendu), `test_lseek_short_stack_one_byte_offset`,
+  `test_xstack_512_bytes_capacity`, `test_read_xstack_count_above_256`.
+- Tests lseek/phi2 existants réalignés sur la convention firmware.
+
+#### Notes
+
+- Divergences moyennes/mineures restantes documentées dans l'audit
+  (console UART $03A0-$03A3 inerte, protocole TAP bas niveau $0315/$0317
+  en stub, ACIA LOCI $0380-$0383 absente, op $A6 `adj_scan` → ENOSYS,
+  bits bas $0314/$0318, $031A-$031B) — backlog Sprint 36f.
+
 ## [1.16.80-alpha] - 2026-06-11
 
 ### Sprint 36d — LOCI identity marker register $0319

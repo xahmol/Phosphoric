@@ -39,6 +39,7 @@ uint16_t map_errno(int e) {
         case EBUSY:  return LOCI_EBUSY;
         case EIO:    return LOCI_EIO;
         case ENOSYS: return LOCI_ENOSYS;
+        case ENOTEMPTY: return LOCI_EACCES;
         default:     return LOCI_EIO;
     }
 }
@@ -713,6 +714,20 @@ void op_unlink(loci_t* loci) {
         api_return_errno(loci, LOCI_EACCES);
         return;
     }
+
+    // FatFs's f_unlink() (the real LOCI firmware's UNLINK backend) removes
+    // both files and empty directories; bare unlink() fails EISDIR on a
+    // directory, so detect that case and use rmdir() instead.
+    struct stat st;
+    if (stat(host_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+        if (rmdir(host_path) != 0) {
+            api_return_errno(loci, map_errno(errno));
+            return;
+        }
+        api_return_ax(loci, 0);
+        return;
+    }
+
     if (unlink(host_path) != 0) {
         api_return_errno(loci, map_errno(errno));
         return;

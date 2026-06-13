@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.84-alpha] - 2026-06-13
+
+### Sprint 36h — Fix conformité WRITE_XSTACK (op $18)
+
+Trouvé via le harness de test locifilemanager-v2 (client LOCI Oric Atmos) :
+`config_save()` (premier appel réel à `loci_write`/`write_xstack` sur
+matériel réel) provoquait un blocage complet du firmware (survit au RESET,
+nécessite un cycle d'alimentation).
+
+#### Fixed
+
+- **`op_write_xstack` (`loci_fs.c`, backends hostfs et SDIMG)** : dépilait un
+  `uint16` explicite de comptage avant les octets de données, comme
+  `op_read_xstack`. Le firmware réel (`std_api_write_xstack`,
+  `sodiumlb/loci-firmware` `std.c`) ne dépile **aucun** comptage explicite
+  pour WRITE_XSTACK : il déduit le nombre d'octets de
+  `XSTACK_SIZE - xstack_ptr` (combien d'octets sont actuellement empilés).
+  Seul READ_XSTACK utilise un comptage explicite (`api_pop_uint16_end`).
+- `tests/unit/test_loci.c` `test_write_read_roundtrip` : retire le
+  `push_u16(&l, 5)` qui simulait l'ancienne convention non conforme ; le
+  test écrit désormais "HELLO" comme le ferait le firmware réel (152 tests
+  inchangés sur test-loci).
+
+#### Notes
+
+- Ce bug n'avait pas été détecté par l'audit Sprint 36e car `op_write_xstack`
+  n'était pas dans son périmètre (lseek/phi2/xstack-size) ; l'émulation et
+  le client v2 partageaient la même convention non conforme, donc les tests
+  des deux côtés passaient malgré le bug.
+- Côté client, voir locifilemanager-v2 commit 13c2360 (`write_xstack()`
+  retire le `mia_push_int(count)` correspondant).
+
 ## [1.16.83-alpha] - 2026-06-13
 
 ### Sprint 36g — Fix UNLINK sur répertoire vide (backend hostfs)

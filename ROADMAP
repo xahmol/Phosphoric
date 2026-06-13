@@ -795,6 +795,13 @@ Référence : `docs/control_protocol.md`
 - [ ] `bread <addr> <len>` (framing binaire) — reporté à 35c selon scope
 - [ ] Client de référence Python (livré par OricForge en parallèle)
 
+### Sprint 36h: Fix conformité WRITE_XSTACK (op $18) (v1.16.84-alpha) - DONE
+- [x] Found while building Phosphoric-based test harness for locifilemanager-v2 (`config_save()`, premier appel réel à `write_xstack` sur matériel) : activer le filtre de type (App > Filter Type) provoquait un blocage total du firmware LOCI, survivant au RESET (nécessite un power-cycle)
+- [x] Root cause : `op_write_xstack` (hostfs+SDIMG, `loci_fs.c`) dépilait à tort un `uint16` de comptage explicite avant les données, comme `READ_XSTACK` ; le firmware réel (`std_api_write_xstack`, `sodiumlb/loci-firmware` `src/mia/api/std.c`) déduit le comptage de `XSTACK_SIZE - xstack_ptr`, sans dépiler de valeur explicite — côté v2, `include/loci.c` avait le même défaut symétrique (`mia_push_int(count)` après les données), les deux bugs se masquaient l'un l'autre dans les tests existants
+- [x] Fix : `op_write_xstack` réécrit pour calculer `count = LOCI_XSTACK_SIZE - xstack_ptr` (hostfs+SDIMG) ; côté v2, suppression de `mia_push_int(count)` dans `write_xstack()` (commit `13c2360`)
+- [x] `test_write_read_roundtrip` corrigé pour la nouvelle convention (plus de `push_u16(&l, 5)` avant `WRITE_XSTACK`), 152 tests inchangés sur `test-loci`
+- [x] Hors scope (documenté) : `READ_XSTACK` (op $17, `api_pop_uint16_end`) reste inchangé — déjà conforme au firmware
+
 ### Sprint 36g: Fix UNLINK sur répertoire vide — backend hostfs (v1.16.83-alpha) - DONE
 - [x] Found while building Phosphoric-based test harness for locifilemanager-v2 (recursive directory move test) : le move récursif laissait derrière lui l'arborescence source vide
 - [x] Root cause : `op_unlink` (hostfs, `loci_fs.c`) appelait `unlink()` nu, qui renvoie `EISDIR` sur un répertoire sous Linux ; le firmware LOCI réel (`f_unlink()` FatFs) supprime fichiers ET répertoires vides

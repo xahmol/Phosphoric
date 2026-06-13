@@ -350,14 +350,15 @@ TEST(test_write_read_roundtrip) {
 
     /* The 6502 writes a string by pushing it in REVERSE order so that
      * reading forward from xstack_ptr yields the string in order.
-     * To write "HELLO" the 6502 pushes O,L,L,E,H. */
+     * To write "HELLO" the 6502 pushes O,L,L,E,H. Unlike read_xstack,
+     * write_xstack does NOT take an explicit count -- the firmware derives
+     * it from how many bytes are on the xstack (XSTACK_SIZE - xstack_ptr),
+     * per std_api_write_xstack in sodiumlb/loci-firmware std.c. */
     loci_write(&l, 0x03AC, 'O');
     loci_write(&l, 0x03AC, 'L');
     loci_write(&l, 0x03AC, 'L');
     loci_write(&l, 0x03AC, 'E');
     loci_write(&l, 0x03AC, 'H');
-    /* Then push count uint16 (hi first, lo last → lo on top, LE in xstack). */
-    push_u16(&l, 5);
 
     l.regs[LOCI_REG_API_A] = (uint8_t)fd;
     loci_write(&l, 0x03AF, LOCI_OP_WRITE_XSTACK);

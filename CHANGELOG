@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.86-alpha] - 2026-06-15
+
+### Sprint 36j — Fix mapping clavier =/+ dans char_map
+
+Trouvé via le harness de test OricScreenEditorLOCI (éditeur de caractères) :
+les touches `+`/`-`/`=` du `char_map` doivent faire défiler le screencode édité
+via `--type-keys`, mais seule `-` fonctionnait.
+
+#### Fixed
+
+- **`char_map` (`src/io/keyboard.c`)** : les entrées `0x2B '+'` (`S(7,7)`) et
+  `0x3D '='` (`U(7,7)`) pointaient vers la position matrice (7,7), inutilisée
+  aussi bien côté ROM Oric que côté tables de décodage OSE
+  (`decode_normal`/`decode_shifted`, index 63 = 0). La vraie touche `=`/`+`
+  est en position (7,6) (index 62). Corrigé en `S(7,6)`/`U(7,6)`.
+- `make test-keyboard` : 24/24 inchangé ; `make tests` : toutes les suites
+  PASS.
+
 ## [1.16.84-alpha] - 2026-06-13
 
 ### Sprint 36h — Fix conformité WRITE_XSTACK (op $18)

@@ -795,6 +795,11 @@ Référence : `docs/control_protocol.md`
 - [ ] `bread <addr> <len>` (framing binaire) — reporté à 35c selon scope
 - [ ] Client de référence Python (livré par OricForge en parallèle)
 
+### Sprint 36j: Fix mapping clavier =/+ dans char_map (v1.16.86-alpha) - DONE
+- [x] Found while building the Phosphoric-based test harness for OricScreenEditorLOCI (character editor : les touches `+`/`-`/`=` doivent faire défiler le screencode édité via `--type-keys`, mais seule `-` fonctionnait)
+- [x] Root cause : `char_map` (`src/io/keyboard.c`) entries `0x2B '+'` (`S(7,7)`) et `0x3D '='` (`U(7,7)`) pointaient vers la position matrice (7,7), inutilisée aussi bien côté ROM Oric que côté tables de décodage OSE `decode_normal`/`decode_shifted` (index 63 = 0) ; la vraie touche `=`/`+` est en position (7,6) (index 62)
+- [x] Fix : corrigé en `S(7,6)`/`U(7,6)` ; `test-keyboard` 24/24 inchangé, `make tests` toutes suites PASS
+
 ### Sprint 36h: Fix conformité WRITE_XSTACK (op $18) (v1.16.84-alpha) - DONE
 - [x] Found while building Phosphoric-based test harness for locifilemanager-v2 (`config_save()`, premier appel réel à `write_xstack` sur matériel) : activer le filtre de type (App > Filter Type) provoquait un blocage total du firmware LOCI, survivant au RESET (nécessite un power-cycle)
 - [x] Root cause : `op_write_xstack` (hostfs+SDIMG, `loci_fs.c`) dépilait à tort un `uint16` de comptage explicite avant les données, comme `READ_XSTACK` ; le firmware réel (`std_api_write_xstack`, `sodiumlb/loci-firmware` `src/mia/api/std.c`) déduit le comptage de `XSTACK_SIZE - xstack_ptr`, sans dépiler de valeur explicite — côté v2, `include/loci.c` avait le même défaut symétrique (`mia_push_int(count)` après les données), les deux bugs se masquaient l'un l'autre dans les tests existants
